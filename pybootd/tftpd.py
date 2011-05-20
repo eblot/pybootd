@@ -142,7 +142,7 @@ class TftpConnection(object):
                         elif self.server.root:
                             if self.server.root.startswith(os.sep):
                                 # Absolute root directory
-                                resource = os.path.join(self.server.root, 
+                                resource = os.path.join(self.server.root,
                                                         resource)
                             else:
                                 # Relative root directory, from the daemon path
@@ -150,7 +150,7 @@ class TftpConnection(object):
                                 if not daemonpath.startswith(os.sep):
                                     daemonpath = os.path.normpath( \
                                         os.path.join(os.getcwd(), daemonpath))
-                                resource = os.path.join(daemonpath, 
+                                resource = os.path.join(daemonpath,
                                         self.server.root, resource)
                         resource = os.path.normpath(resource)
             self.log.info("Resource '%s'" % resource)
@@ -383,7 +383,7 @@ class TftpConnection(object):
 
 class TftpServer:
     """TFTP Server
-    Implements a threaded TFTP Server. 
+    Implements a threaded TFTP Server.
     Each request is handled in its own thread
     """
 

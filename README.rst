@@ -9,7 +9,7 @@ Overview
 PyBootd is a daemon that supports a subset of the BOOTP, DHCP, PXE and TFTP
 protocols, with some handy extensions.
 
-One of its main goals is to provide a simple solution to boot up any 
+One of its main goals is to provide a simple solution to boot up any
 PXE-enabled personal computer, without requiring any other tools but a standard
 Python installation.
 
@@ -32,7 +32,7 @@ Permissions:
 - DHCP protocol requires the daemon to listen on port 67.
 - TFTP protocol requires the daemon to listen on port 69.
 
- As these ports are within the server range (<1024), the superuser privileges 
+ As these ports are within the server range (<1024), the superuser privileges
  are required on Unix hosts (Linux, Mac OS X, ...) to start up these daemons.
 
 ------
@@ -48,7 +48,7 @@ Supported features
  1. None (any remote host can be served)
  2. MAC address ACL
  3. UUID based ACL - requires PXE protocol
- 4. HTTP forwarding - authorization is delegated to a remote server using 
+ 4. HTTP forwarding - authorization is delegated to a remote server using
     simple HTTP GET requests
 
 - Local or remote file serving:
@@ -60,7 +60,7 @@ Supported features
 
 - File name translation
 
-  - Files requested from TFTP clients can be filtered and transformed into 
+  - Files requested from TFTP clients can be filtered and transformed into
     local filenames using filters
 
 - It is possible to use pybootd with only one of the offered services, either
