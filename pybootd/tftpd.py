@@ -28,6 +28,7 @@ import time
 import thread
 import urllib2
 import urlparse
+from ConfigParser import NoSectionError
 from cStringIO import StringIO
 from pybootd import pybootd_path
 from util import hexline
@@ -433,13 +434,16 @@ class TftpServer:
     def get_file_filters(self):
         patterns = []
         replacements = {}
-        for pos, pattern in enumerate(self.config.options('filters'), 1):
-            value = self.config.get('filters', pattern).strip()
-            pattern = pattern.strip('\r\n \t')
-            pattern = pattern.replace('.', '\.')
-            pattern = pattern.replace('*', '.*').replace('?', '.')
-            pname = 'p%d' % pos
-            replacements[pname] = value
-            patterns.append('(?P<%s>%s)' % (pname, pattern))
-        xre = '^(?:\./)?(?:%s)$' % '|'.join(patterns)
+        try:
+            for pos, pattern in enumerate(self.config.options('filters'), 1):
+                value = self.config.get('filters', pattern).strip()
+                pattern = pattern.strip('\r\n \t')
+                pattern = pattern.replace('.', '\.')
+                pattern = pattern.replace('*', '.*').replace('?', '.')
+                pname = 'p%d' % pos
+                replacements[pname] = value
+                patterns.append('(?P<%s>%s)' % (pname, pattern))
+            xre = '^(?:\./)?(?:%s)$' % '|'.join(patterns)
+        except NoSectionError:
+            xre = '^$'
         return (re.compile(xre), replacements)
