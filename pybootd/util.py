@@ -156,4 +156,3 @@ class EasyConfigParser(SafeConfigParser):
         if not self.has_option(section, option):
             return default
         return SafeConfigParser.get(self, section, option)
-
