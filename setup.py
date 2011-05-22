@@ -28,7 +28,7 @@ def _read(fname):
 setup(
     name='pybootd',
     version='1.5.0',
-    description='Simplified BOOTP/DHCP/PXE/TFTP server',
+    description='Simplified BOOTP/DHCP/PXE and TFTP server',
     author='Emmanuel Blot',
     author_email='emmanuel.blot@free.fr',
     license='LGPL v2',
@@ -39,7 +39,7 @@ setup(
     requires=['netifaces (>= 0.5)'],
     classifiers=[
         'Development Status :: 4 - Beta',
-        'Environment :: No Input/Output',
+        'Environment :: No Input/Output (Daemon)',
         'Intended Audience :: Developers',
         'Intended Audience :: System Administrators',
         'License :: OSI Approved :: GNU Library or '
@@ -48,7 +48,7 @@ setup(
         'Operating System :: POSIX',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
-        'Topic :: Internet'
+        'Topic :: Internet',
         'Topic :: System :: Installation/Setup',
         'Topic :: System :: Networking',
         'Topic :: Utilities'
