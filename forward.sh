@@ -62,9 +62,8 @@ case "${OSTYPE}" in
         fi
         if [ ${ENABLE} -eq 1 ]; then
             echo "Enabling IP forwarding through interface $WAN_IF"
-            iptables --table nat --append POSTROUTING \
-                --out-interface ${WAN_IF} -j MASQUERADE
-            iptables --append FORWARD --in-interface ${LAN_IF} -j ACCEPT
+            iptables -t nat -A POSTROUTING -o ${WAN_IF} -j MASQUERADE
+            iptables -A FORWARD -i ${LAN_IF} -j ACCEPT
             echo 1 > /proc/sys/net/ipv4/ip_forward
         else
             echo "Disabling IP forwarding"
