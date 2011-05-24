@@ -34,7 +34,7 @@ if [ -z "${WAN_IF}" ]; then
     exit 1
 fi
 
-if [ ${UID} -ne 0 ];
+if [ ${UID} -ne 0 ]; then
     echo "Superuser privileges are required" >&2
     exit 1
 fi
