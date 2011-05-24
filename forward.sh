@@ -40,7 +40,11 @@ while [ $# -ge 0 ]; do
         ;;
       -i)
         shift
-        INTERFACE=$1
+        WAN_IF=$1
+        ;;
+      -j)
+        shift
+        LAN_IF=$1
         ;;
       -*)
         usage
