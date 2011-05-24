@@ -29,17 +29,52 @@ $NAME [options] <on|off>
 EOT
 }
 
+ENABLE=0
+
+# Parse the command line
+while [ $# -ge 0 ]; do
+    case "$1" in
+      -h)
+        usage
+        exit 0
+        ;;
+      -i)
+        shift
+        INTERFACE=$1
+        ;;
+      -*)
+        usage
+        echo "Unsupported option: $1"
+        exit 1
+        ;;
+      on)
+        ENABLE=1
+        ;;
+      off)
+        ENABLE=0
+        ;;
+      '')
+        break
+        ;;
+      *)
+        usage
+        echo "Unsupported command: $1"
+        exit 1
+        ;;
+    esac
+    shift
+done
+
 if [ -z "${WAN_IF}" ]; then
     echo "Unknown WAN interface" >&2
     exit 1
 fi
 
+UID=`id -u`
 if [ ${UID} -ne 0 ]; then
     echo "Superuser privileges are required" >&2
     exit 1
 fi
-
-ENABLE=0
 
 case "${OSTYPE}" in
     darwin*)
