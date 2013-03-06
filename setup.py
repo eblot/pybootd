@@ -36,7 +36,7 @@ setup(
     url='http://github.com/eblot/pybootd',
     download_url='https://github.com/eblot/pybootd/tarball/master',
     packages=['pybootd'],
-    requires=['netifaces (>= 0.5)'],
+    # requires=['netifaces (>= 0.5)'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: No Input/Output (Daemon)',
