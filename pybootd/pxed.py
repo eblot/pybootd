@@ -559,9 +559,12 @@ class BootpServer:
                               'dns', None)
         if dns:
             if dns.lower() == 'auto':
-                dns = self.get_dns_server() or socket.inet_ntoa(server)
-            dns = socket.inet_aton(dns)
-            pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns)
+                dns_list = self.get_dns_servers() or [socket.inet_ntoa(server)]
+            else:
+                dns_list = dns.split(';')
+            for dns_str in dns_list:
+                dns_ip = socket.inet_aton(dns_str)
+                pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += struct.pack('!BBI', DHCP_LEASE_TIME, 4,
                            int(self.config.get(self.bootp_section, 'lease_time',
                                                str(24*3600))))
@@ -589,20 +592,22 @@ class BootpServer:
                             (currentstate, newstate))
             self.states[mac_str] = newstate
 
-    def get_dns_server(self):
+    def get_dns_servers(self):
         nscre = re.compile('nameserver\s+(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\s')
+        result = []
         try:
             with open('/etc/resolv.conf', 'r') as resolv:
                 for line in resolv:
                     mo = nscre.match(line)
                     if mo:
                         dns = mo.group(1)
-                        self.log.info('Found primary nameserver: %s' % dns)
-                        return dns
+                        self.log.info('Found nameserver: %s' % dns)
+                        result.append(dns)
         except Exception, e:
             pass
-        self.log.info('No nameserver found')
-        return None
+        if not result:
+            self.log.info('No nameserver found')
+        return result
 
     def get_filename(self, ip):
         """Returns the filename defined for a host"""

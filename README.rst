@@ -179,7 +179,10 @@ client requests at least an IP address twice:
    Domain part of the client FQDN, that is the network's domain name.
 
 ``dns``
-   IP address of the DNS server. The server only accepts a single address.
+   IP addresses of DNS servers. Multiple addresses are separated with
+   semicolon. Specify ``auto`` to re-use DNS addresses used by the
+   server. Note that most DHCP clients will only consider the first
+   DNS address if multiple are provided.
 
 ``lease_time``
    Validity in seconds of a DHCP lease. Please note that the BOOTP daemon does
