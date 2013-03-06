@@ -65,4 +65,3 @@ def pybootd_path(path):
     if not os.path.isfile(newpath) and not os.path.isdir(newpath):
         raise IOError('No such file or directory (local)')
     return newpath
-
