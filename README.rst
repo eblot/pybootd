@@ -22,11 +22,12 @@ Python
 ------
 
 - Python_ 2.6 or above is required. Python_ 3.x is not yet supported.
-- Netifaces_ Python module
+- Optional: Netifaces_ Python module; In its absence, iproute2_ is expected
 - Optional: python-pkg-resources_ Python module
 
 .. _Python: http://python.org/
 .. _Netifaces: http://alastairs-place.net/netifaces/
+.. _iproute2: http://www.linuxfoundation.org/collaborate/workgroups/networking/iproute2
 .. _python-pkg-resources: http://pythonhosted.org/distribute/pkg_resources.html
 
 Permissions
