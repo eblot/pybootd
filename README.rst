@@ -76,9 +76,13 @@ Common errors
 -------------
 
 ``pybootd.pxed.BootpError: Unable to detect network configuration``
-  This error is often triggered when the ``pool_start`` address is not part of
-  a valid network. Double check the network configuration and fix up the
-  ``[bootp]`` section so that it matches the actual network.
+  This error is often triggered when the ``pool_start`` address is not
+  part of a valid network. Double check the network configuration and
+  fix up the ``[bootp]`` section so that it matches the actual
+  network. If you don't want to allocate addresses dynamically from
+  the pool (with ``pool_count = 0``), you still need to specify
+  ``pool_start`` to some address in the local network you want to
+  serve (*eg.* the address of your local server).
 
 Configuration
 -------------
@@ -182,10 +186,16 @@ client requests at least an IP address twice:
    not manage lease expiration; this value has therefore little meaning.
 
 ``pool_start``
-   First address to allocate for a BOOT client.
+   First address to allocate for a BOOT client. This has to be an
+   address in the local network you want to serve, even if
+   ``pool_count`` is set to 0, in which case the address of the DHCP
+   server is a good choice.
 
 ``pool_count``
-   The maximum number of clients that can be served.
+   The maximum number of IP addresses that can be dynamically
+   allocated from the pool to BOOTP/DHCP clients. Set it to 0 to
+   prevent server from dynamically allocating IP addresses from the
+   pool and see ``static_dhcp`` below.
 
 ``notify``
    When defined, the IP address and port (using a column separator:
@@ -212,6 +222,17 @@ client requests at least an IP address twice:
 
      AA-BB-CC-DD-EE-FF = enable
 
+``[static_dhcp]`` section
+.........................
+
+   The ``[static_dhcp]`` section contains one entry for each MAC
+   address to associate with a specific IP address. The IP address can be
+   any IPv4 address in dotted notation, *i.e.*:
+
+     AA-BB-CC-DD-EE-FF = 192.168.1.2
+
+   The MAC addresses specified here will automatically be allowed,
+   unless ``[mac]`` section specifies otherwise.
 
 ``[uuid]`` section
 ..................

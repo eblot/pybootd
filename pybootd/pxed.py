@@ -215,6 +215,13 @@ class BootpServer:
                 for entry in self.config.options(access):
                     self.acl[entry.upper()] = \
                         to_bool(self.config.get(access, entry))
+        # pre-fill ippool if specified
+        if self.config.has_section('static_dhcp'):
+            for mac_str, ip_str in config.items('static_dhcp'):
+                mac_key = mac_str.upper()
+                self.ippool[mac_key] = ip_str
+                if access == 'mac' and mac_str not in self.acl:
+                    self.acl[mac_key] = True
         self.access = access
 
     # Private
