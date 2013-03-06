@@ -383,6 +383,9 @@ class BootpServer:
                 to_bool(self.config.get(self.bootp_section, sdhcp))
             if not simple_dhcp:
                return
+            if not dhcp_msg_type:
+                # Legacy DHCP: assuming discover by default
+                dhcp_msg_type = DHCP_DISCOVER
 
         # if access control is enable
         if self.access:
