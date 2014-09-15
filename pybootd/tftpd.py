@@ -379,7 +379,7 @@ class TftpConnection(object):
 
     @staticmethod
     def is_url(path):
-        return urlparse.urlsplit(path)['scheme'] and True or False
+        return bool(urlparse.urlsplit(path).scheme)
 
 
 class TftpServer:
