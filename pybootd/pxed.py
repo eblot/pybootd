@@ -546,7 +546,8 @@ class BootpServer:
         pkt += struct.pack('!BB4s', DHCP_IP_MASK, 4, mask)
 
         if to_bool(self.config.get(self.bootp_section, 'set_gateway', True)):
-            pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, server)
+            gateway = self.config.get(self.bootp_section, 'gateway', server)
+            pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
 
         dns = self.config.get(self.bootp_section,
                               'dns', None)
