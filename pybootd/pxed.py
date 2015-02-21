@@ -471,13 +471,20 @@ class BootpServer:
                 self.log.info('Lease for MAC %s already defined as IP %s' % \
                                 (mac_str, ip))
             else:
-                for idx in xrange(self.pool_count):
-                    ipkey = inttoip(ipaddr+idx)
-                    self.log.debug('Check for IP %s' % ipkey)
-                    if ipkey not in self.ippool.values():
-                        self.ippool[mac_str] = ipkey
-                        ip = ipkey
-                        break
+                ip = self.config.get(mac_str.lower(), "ipv4")
+                if ip:
+                    self.ippool[mac_str] = ip
+                    self.log.info('Found reserved IP "%s" for MAC "%s"' %
+                                  (ip, mac_str))
+                else:
+                    self.log.debug("No reserved IP found for MAC %s" % mac_str)
+                    for idx in xrange(self.pool_count):
+                        ipkey = inttoip(ipaddr+idx)
+                        self.log.debug('Check for IP %s' % ipkey)
+                        if ipkey not in self.ippool.values():
+                            self.ippool[mac_str] = ipkey
+                            ip = ipkey
+                            break
             if not ip:
                 raise BootpError('No more IP available in definined pool')
 
