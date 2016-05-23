@@ -281,9 +281,9 @@ class BootpServer:
                 self.log.debug(" option %d: '%s', size:%d %s" % \
                                (tag, option, length, hexline(value)))
             except KeyError:
-                self.log.error('  unknown option %d, size:%d %s:' % \
-                                (tag, length, hexline(value)))
-                return None
+                self.log.debug('  unknown option %d, size:%d %s:' % \
+                               (tag, length, hexline(value)))
+                continue
             dhcp_tags[tag] = value
 
     def build_pxe_options(self, options, server):
