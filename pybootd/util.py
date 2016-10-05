@@ -18,11 +18,17 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 from ConfigParser import SafeConfigParser
+import commands
 import logging
 import re
 import socket
 import struct
 import sys
+
+try:
+  import netifaces
+except ImportError:
+  netifaces = None
 
 # String values evaluated as a true boolean values
 TRUE_BOOLEANS = ['on','true','enable','enabled','yes','high','ok','1']
@@ -122,13 +128,7 @@ def iptoint(ipstr):
 def inttoip(ipval):
     return socket.inet_ntoa(struct.pack('!I', ipval))
 
-def get_iface_config(address):
-    if not address:
-        return None
-    try:
-        import netifaces
-    except ImportError:
-        raise AssertionError("netifaces module is not installed")
+def _netifaces_get_iface_config(address):
     pool = iptoint(address)
     for iface in netifaces.interfaces():
         ifinfo = netifaces.ifaddresses(iface)
@@ -147,6 +147,39 @@ def get_iface_config(address):
                            'mask': inttoip(mask) }
                 return config
     return None
+
+def _iproute_get_iface_config(address):
+    pool = iptoint(address)
+    iplines=(line.strip()
+             for line in commands.getoutput("ip address show").split('\n'))
+    iface = None
+    for l in iplines:
+        items = l.split()
+        if not items:
+            continue
+        if items[0].endswith(':'):
+            iface = items[1][:-1]
+        elif items[0] == 'inet':
+            saddr, smasklen = items[1].split('/', 1)
+            addr = iptoint(saddr)
+            masklen = int(smasklen)
+            mask = ((1 << masklen) - 1) << (32 - masklen)
+            ip = addr & mask
+            ip_client = pool & mask
+            delta = ip ^ ip_client
+            if not delta:
+                return { 'ifname': iface,
+                         'server': inttoip(addr),
+                         'net': inttoip(ip),
+                         'mask': inttoip(mask) }
+    return None
+
+def get_iface_config(address):
+    if not address:
+        return None
+    if netifaces:
+        return _iproute_get_iface_config(address)
+    return _netifaces_get_iface_config(address)
 
 class EasyConfigParser(SafeConfigParser):
     "ConfigParser extension to support default config values"

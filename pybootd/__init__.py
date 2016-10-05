@@ -21,8 +21,12 @@ import os
 import sys
 
 def _get_package_name(default='', version='1.5.0'):
-    from pkg_resources import WorkingSet
-    ws = WorkingSet()
+    try:
+        from pkg_resources import WorkingSet
+    except ImportError:
+        ws = []
+    else:
+        ws = WorkingSet()
     _path, _ = os.path.split(os.path.dirname( \
                                     sys.modules['pybootd'].__file__))
     _path = os.path.normpath(_path)
@@ -48,9 +52,12 @@ def pybootd_path(path):
     else:
         try:
             from pkg_resources import Requirement, resource_filename
+            from pkg_resources import get_distribution
+        except ImportError:
+            raise IOError('pkg_resources module not available')
+        try:
             newpath = resource_filename(Requirement.parse(PRODUCT_NAME), path)
             if not newpath:
-                from pkg_resources import get_distribution
                 localpath = get_distribution(PRODUCT_NAME).location
                 newpath = os.path.join(localpath, path)
         except KeyError:
@@ -58,4 +65,3 @@ def pybootd_path(path):
     if not os.path.isfile(newpath) and not os.path.isdir(newpath):
         raise IOError('No such file or directory (local)')
     return newpath
-

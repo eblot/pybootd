@@ -134,7 +134,7 @@ class TftpConnection(object):
             else:
                 try:
                     resource = pybootd_path(resource)
-                except IOError:
+                except Exception:
                     if not self.server.genfilecre.match(resource):
                         if resource.startswith('^%s' % os.sep):
                             resource = os.path.join( \

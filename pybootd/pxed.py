@@ -215,6 +215,13 @@ class BootpServer:
                 for entry in self.config.options(access):
                     self.acl[entry.upper()] = \
                         to_bool(self.config.get(access, entry))
+        # pre-fill ippool if specified
+        if self.config.has_section('static_dhcp'):
+            for mac_str, ip_str in config.items('static_dhcp'):
+                mac_key = mac_str.upper()
+                self.ippool[mac_key] = ip_str
+                if access == 'mac' and mac_str not in self.acl:
+                    self.acl[mac_key] = True
         self.access = access
 
     # Private
@@ -274,9 +281,9 @@ class BootpServer:
                 self.log.debug(" option %d: '%s', size:%d %s" % \
                                (tag, option, length, hexline(value)))
             except KeyError:
-                self.log.error('  unknown option %d, size:%d %s:' % \
-                                (tag, length, hexline(value)))
-                return None
+                self.log.debug('  unknown option %d, size:%d %s:' % \
+                               (tag, length, hexline(value)))
+                continue
             dhcp_tags[tag] = value
 
     def build_pxe_options(self, options, server):
@@ -383,6 +390,9 @@ class BootpServer:
                 to_bool(self.config.get(self.bootp_section, sdhcp))
             if not simple_dhcp:
                return
+            if not dhcp_msg_type:
+                # Legacy DHCP: assuming discover by default
+                dhcp_msg_type = DHCP_DISCOVER
 
         # if access control is enable
         if self.access:
@@ -549,9 +559,12 @@ class BootpServer:
                               'dns', None)
         if dns:
             if dns.lower() == 'auto':
-                dns = self.get_dns_server() or socket.inet_ntoa(server)
-            dns = socket.inet_aton(dns)
-            pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns)
+                dns_list = self.get_dns_servers() or [socket.inet_ntoa(server)]
+            else:
+                dns_list = dns.split(';')
+            for dns_str in dns_list:
+                dns_ip = socket.inet_aton(dns_str)
+                pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += struct.pack('!BBI', DHCP_LEASE_TIME, 4,
                            int(self.config.get(self.bootp_section, 'lease_time',
                                                str(24*3600))))
@@ -579,20 +592,22 @@ class BootpServer:
                             (currentstate, newstate))
             self.states[mac_str] = newstate
 
-    def get_dns_server(self):
+    def get_dns_servers(self):
         nscre = re.compile('nameserver\s+(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\s')
+        result = []
         try:
             with open('/etc/resolv.conf', 'r') as resolv:
                 for line in resolv:
                     mo = nscre.match(line)
                     if mo:
                         dns = mo.group(1)
-                        self.log.info('Found primary nameserver: %s' % dns)
-                        return dns
+                        self.log.info('Found nameserver: %s' % dns)
+                        result.append(dns)
         except Exception, e:
             pass
-        self.log.info('No nameserver found')
-        return None
+        if not result:
+            self.log.info('No nameserver found')
+        return result
 
     def get_filename(self, ip):
         """Returns the filename defined for a host"""
