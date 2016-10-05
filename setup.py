@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -25,18 +25,18 @@ def _read(fname):
     import os
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+
 setup(
     name='pybootd',
-    version='1.5.0',
+    version='1.6.0',
     description='Simplified BOOTP/DHCP/PXE and TFTP server',
     author='Emmanuel Blot',
     author_email='emmanuel.blot@free.fr',
     license='LGPL v2',
-    keywords = 'bootp ftdp dhcp pxe netboot',
+    keywords='bootp ftdp dhcp pxe netboot',
     url='http://github.com/eblot/pybootd',
     download_url='https://github.com/eblot/pybootd/tarball/master',
     packages=['pybootd'],
-    # requires=['netifaces (>= 0.5)'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: No Input/Output (Daemon)',
@@ -53,7 +53,7 @@ setup(
         'Topic :: System :: Networking',
         'Topic :: Utilities'
     ],
-    package_data = {
+    package_data={
         '': ['etc/*.ini', 'etc/*.cfg'],
     },
     long_description=_read('README.rst'),
