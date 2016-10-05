@@ -135,8 +135,13 @@ def _netifaces_get_iface_config(address):
         if netifaces.AF_INET not in ifinfo:
             continue
         for inetinfo in netifaces.ifaddresses(iface)[netifaces.AF_INET]:
-            addr = iptoint(inetinfo['addr'])
-            mask = iptoint(inetinfo['netmask'])
+            addr_s = inetinfo.get('addr')
+            netmask_s = inetinfo.get('netmask')
+            if addr_s is None or netmask_s is None:
+                continue
+
+            addr = iptoint(addr_s)
+            mask = iptoint(netmask_s)
             ip = addr & mask
             ip_client = pool & mask
             delta = ip ^ ip_client

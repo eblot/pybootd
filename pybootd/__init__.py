@@ -50,6 +50,7 @@ def pybootd_path(path):
     elif os.path.exists(path):
         newpath = path
     else:
+        from pkg_resources import DistributionNotFound
         try:
             from pkg_resources import Requirement, resource_filename
             from pkg_resources import get_distribution
@@ -60,6 +61,8 @@ def pybootd_path(path):
             if not newpath:
                 localpath = get_distribution(PRODUCT_NAME).location
                 newpath = os.path.join(localpath, path)
+        except DistributionNotFound:
+            newpath = path
         except KeyError:
             raise IOError('No such file or directory (resource)')
     if not os.path.isfile(newpath) and not os.path.isdir(newpath):

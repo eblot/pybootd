@@ -185,9 +185,14 @@ class BootpServer:
             raise BootpError('Missing pool_start definition')
         self.pool_count = int(self.config.get(self.bootp_section,
                               'pool_count', '10'))
+
         self.netconfig = get_iface_config(self.pool_start)
         if not self.netconfig:
+            host = self.config.get(self.bootp_section, 'address', '0.0.0.0')
+            self.netconfig = get_iface_config(host)
+        if not self.netconfig:
             raise BootpError('Unable to detect network configuration')
+
         keys = sorted(self.netconfig.keys())
         self.log.info('Using %s' % ', '.join(map(':'.join,
                                 zip(keys, [self.netconfig[k] for k in keys]))))
@@ -464,6 +469,7 @@ class BootpServer:
             self.log.info('%s access is authorized, '
                           'request will be satisfied' % item)
         # construct reply
+        buf[BOOTP_HOPS] = 0
         buf[BOOTP_OP] = BOOTREPLY
         self.log.info('Client IP: %s' % socket.inet_ntoa(buf[7]))
         if buf[BOOTP_CIADDR] == '\x00\x00\x00\x00':
@@ -475,27 +481,44 @@ class BootpServer:
                 self.log.info('Lease for MAC %s already defined as IP %s' % \
                                 (mac_str, ip))
             else:
-                for idx in xrange(self.pool_count):
-                    ipkey = inttoip(ipaddr+idx)
-                    self.log.debug('Check for IP %s' % ipkey)
-                    if ipkey not in self.ippool.values():
-                        self.ippool[mac_str] = ipkey
-                        ip = ipkey
-                        break
+                ip = self.config.get(mac_str.lower(), "ipv4")
+                if ip:
+                    self.ippool[mac_str] = ip
+                    self.log.info('Found reserved IP "%s" for MAC "%s"' %
+                                  (ip, mac_str))
+                else:
+                    self.log.debug("No reserved IP found for MAC %s" % mac_str)
+                    for idx in xrange(self.pool_count):
+                        ipkey = inttoip(ipaddr+idx)
+                        self.log.debug('Check for IP %s' % ipkey)
+                        if ipkey not in self.ippool.values():
+                            self.ippool[mac_str] = ipkey
+                            ip = ipkey
+                            break
             if not ip:
                 raise BootpError('No more IP available in definined pool')
-            mask = iptoint(self.netconfig['mask'])
+
+            #mask = iptoint(self.config.get(
+            #    self.bootp_section, 'netmask', self.netconfig['mask']))
+            #mask = iptoint(self.netconfig['mask'])
+            mask = iptoint("0.0.0.0")
+
             reply_broadcast = iptoint(ip) & mask
             reply_broadcast |= (~mask)&((1<<32)-1)
             buf[BOOTP_YIADDR] = socket.inet_aton(ip)
             buf[BOOTP_SECS] = 0
-            buf[BOOTP_FLAGS] = BOOTP_FLAGS_NONE
-            addr = (inttoip(reply_broadcast), addr[1])
-            self.log.debug('Reply to: %s:%s' % addr)
+            buf[BOOTP_FLAGS] = BOOTP_FLAGS_BROADCAST
+
+            relay = buf[BOOTP_GIADDR]
+            if relay != b'\x00\x00\x00\x00':
+                addr = (socket.inet_ntoa(relay), addr[1])
+            else:
+                addr = (inttoip(reply_broadcast), addr[1])
+            self.log.info('Reply to: %s:%s' % addr)
         else:
             buf[BOOTP_YIADDR] = buf[BOOTP_CIADDR]
             ip = socket.inet_ntoa(buf[BOOTP_YIADDR])
-        buf[BOOTP_SIADDR] = buf[BOOTP_GIADDR] = socket.inet_aton(server_addr)
+        buf[BOOTP_SIADDR] = socket.inet_aton(server_addr)
         # sname
         buf[BOOTP_SNAME] = \
             '.'.join([self.config.get(self.bootp_section,
@@ -552,9 +575,17 @@ class BootpServer:
         pkt += struct.pack('!BBB', DHCP_MSG, 1, dhcp_reply)
         server = socket.inet_aton(server_addr)
         pkt += struct.pack('!BB4s', DHCP_SERVER, 4, server)
-        mask = socket.inet_aton(self.netconfig['mask'])
+
+        mask = socket.inet_aton(self.config.get(
+            self.bootp_section, 'netmask', self.netconfig['mask']))
+
         pkt += struct.pack('!BB4s', DHCP_IP_MASK, 4, mask)
-        pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, server)
+
+        if to_bool(self.config.get(self.bootp_section, 'set_gateway', True)):
+            gateway = socket.inet_aton(
+                self.config.get(self.bootp_section, 'gateway', server_addr))
+            pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
+
         dns = self.config.get(self.bootp_section,
                               'dns', None)
         if dns:
