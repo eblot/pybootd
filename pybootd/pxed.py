@@ -218,12 +218,12 @@ class BootpServer:
             self.acl = {}
             if access in self.ACCESS_LOCAL:
                 for entry in self.config.options(access):
-                    self.acl[entry.upper()] = \
+                    self.acl[entry.upper().replace('-', ':')] = \
                         to_bool(self.config.get(access, entry))
         # pre-fill ippool if specified
         if self.config.has_section('static_dhcp'):
             for mac_str, ip_str in config.items('static_dhcp'):
-                mac_key = mac_str.upper()
+                mac_key = mac_str.upper().replace('-', ':')
                 self.ippool[mac_key] = ip_str
                 if access == 'mac' and mac_str not in self.acl:
                     self.acl[mac_key] = True
@@ -349,7 +349,7 @@ class BootpServer:
 
         server_addr = self.netconfig['server']
         mac_addr = buf[BOOTP_CHADDR][:6]
-        mac_str = '-'.join(['%02X' % ord(x) for x in mac_addr])
+        mac_str = ':'.join(['%02X' % ord(x) for x in mac_addr])
         # is the UUID received (PXE mode)
         if 97 in options and len(options[97]) == 17:
             uuid = options[97][1:]
@@ -486,28 +486,18 @@ class BootpServer:
                 self.log.info('Lease for MAC %s already defined as IP %s' %
                               (mac_str, ip))
             else:
-                ip = self.config.get(mac_str.lower(), "ipv4")
-                if ip:
-                    self.ippool[mac_str] = ip
-                    self.log.info('Found reserved IP "%s" for MAC "%s"' %
-                                  (ip, mac_str))
-                else:
-                    self.log.debug("No reserved IP found for MAC %s" % mac_str)
-                    for idx in xrange(self.pool_count):
-                        ipkey = inttoip(ipaddr+idx)
-                        self.log.debug('Check for IP %s' % ipkey)
-                        if ipkey not in self.ippool.values():
-                            self.ippool[mac_str] = ipkey
-                            ip = ipkey
-                            break
+                for idx in xrange(self.pool_count):
+                    ipkey = inttoip(ipaddr+idx)
+                    self.log.debug('Check for IP %s' % ipkey)
+                    if ipkey not in self.ippool.values():
+                        self.ippool[mac_str] = ipkey
+                        ip = ipkey
+                        break
             if not ip:
                 raise BootpError('No more IP available in definined pool')
 
-            #mask = iptoint(self.config.get(
-            #    self.bootp_section, 'netmask', self.netconfig['mask']))
-            #mask = iptoint(self.netconfig['mask'])
-            mask = iptoint("0.0.0.0")
-
+            mask = iptoint(self.config.get(
+                self.bootp_section, 'netmask', self.netconfig['mask']))
             reply_broadcast = iptoint(ip) & mask
             reply_broadcast |= (~mask) & ((1 << 32)-1)
             buf[BOOTP_YIADDR] = socket.inet_aton(ip)
@@ -586,10 +576,12 @@ class BootpServer:
 
         pkt += struct.pack('!BB4s', DHCP_IP_MASK, 4, mask)
 
-        if to_bool(self.config.get(self.bootp_section, 'set_gateway', True)):
-            gateway = socket.inet_aton(
-                self.config.get(self.bootp_section, 'gateway', server_addr))
-            pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
+        gateway_addr = self.config.get(self.bootp_section, 'gateway', '')
+        if gateway_addr:
+            gateway = socket.inet_aton(gateway_addr)
+        else:
+            gateway = server
+        pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
 
         dns = self.config.get(self.bootp_section,
                               'dns', None)

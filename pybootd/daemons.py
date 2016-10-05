@@ -18,20 +18,23 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from optparse import OptionParser
-from pxed import BootpServer
-from pybootd import pybootd_path, PRODUCT_NAME, __version__ as VERSION
-from tftpd import TftpServer
-from util import logger_factory, EasyConfigParser
+"""Boot up server, a tiny BOOTP/DHCP/TFTP/PXE server"""
+
+
 import os
 import sys
-import threading
+from pxed import BootpServer
+from pybootd import pybootd_path, PRODUCT_NAME, __version__ as VERSION
+from six import print_
+from tftpd import TftpServer
+from util import logger_factory, EasyConfigParser
+from threading import Thread
 
 
-class BootpDaemon(threading.Thread):
+class BootpDaemon(Thread):
 
     def __init__(self, logger, config):
-        threading.Thread.__init__(self, name="BootpDeamon")
+        super(BootpDaemon, self).__init__(name="BootpDeamon")
         self.daemon = True
         self._server = BootpServer(logger=logger, config=config)
 
@@ -46,10 +49,10 @@ class BootpDaemon(threading.Thread):
         self._server.forever()
 
 
-class TftpDaemon(threading.Thread):
+class TftpDaemon(Thread):
 
     def __init__(self, logger, config, bootpd=None):
-        threading.Thread.__init__(self, name="TftpDeamon")
+        super(TftpDaemon, self).__init__(name="TftpDeamon")
         self.daemon = True
         self._server = TftpServer(logger=logger, config=config, bootpd=bootpd)
 
@@ -59,46 +62,57 @@ class TftpDaemon(threading.Thread):
 
 
 def main():
-    usage = 'Usage: %prog [options]\n' \
-            '   PXE boot up server, a tiny BOOTP/DHCP/TFTP server'
-    optparser = OptionParser(usage=usage)
-    optparser.add_option('-c', '--config', dest='config',
-                         default='pybootd/etc/pybootd.ini',
-                         help='configuration file')
-    optparser.add_option('-p', '--pxe', dest='pxe', action='store_true',
-                         help='enable BOOTP/DHCP/PXE server only')
-    optparser.add_option('-t', '--tftp', dest='tftp', action='store_true',
-                         help='enable TFTP server only')
-    (options, args) = optparser.parse_args(sys.argv[1:])
-
-    if not options.config:
-        optparser.error('Missing configuration file')
-
-    if options.pxe and options.tftp:
-        optparser.error('Cannot exclude both servers')
-
-    cfgparser = EasyConfigParser()
-    with open(pybootd_path(options.config), 'rt') as config:
-        cfgparser.readfp(config)
-
-    logger = logger_factory(logtype=cfgparser.get('logger', 'type', 'stderr'),
-                            logfile=cfgparser.get('logger', 'file'),
-                            level=cfgparser.get('logger', 'level', 'info'))
-    logger.info('-'.join((PRODUCT_NAME, VERSION)))
+    debug = False
     try:
-        if not options.tftp:
-            bt = BootpDaemon(logger, cfgparser)
-            bt.start()
-        else:
-            bt = None
-        if not options.pxe:
-            ft = TftpDaemon(logger, cfgparser, bt)
-            ft.start()
-        while True:
-            import time
-            time.sleep(5)
-    except Exception, e:
-        print >> sys.stderr, "Error: %s" % str(e)
+        from argparse import ArgumentParser
+        argparser = ArgumentParser(description=sys.modules[__name__].__doc__)
+        argparser.add_argument('-c', '--config', dest='config',
+                               default='pybootd/etc/pybootd.ini',
+                               help='configuration file')
+        argparser.add_argument('-p', '--pxe', dest='pxe',
+                               action='store_true',
+                               help='enable BOOTP/DHCP/PXE server only')
+        argparser.add_argument('-t', '--tftp', dest='tftp',
+                               action='store_true',
+                               help='enable TFTP server only')
+        argparser.add_argument('-d', '--debug', action='store_true',
+                               help='enable debug mode')
+        args = argparser.parse_args()
+        debug = args.debug
+
+        if not os.path.isfile(args.config):
+            argparser.error('Invalid configuration file')
+
+        if args.pxe and args.tftp:
+            argparser.error('Cannot exclude PXE & TFTP servers altogether')
+
+        cfgparser = EasyConfigParser()
+        with open(pybootd_path(args.config), 'rt') as config:
+            cfgparser.readfp(config)
+
+        logger = logger_factory(logtype=cfgparser.get('logger', 'type',
+                                                      'stderr'),
+                                logfile=cfgparser.get('logger', 'file'),
+                                level=cfgparser.get('logger', 'level',
+                                                    'info'))
+        logger.info('-'.join((PRODUCT_NAME, VERSION)))
+
+        daemon = None
+        if not args.tftp:
+            daemon = BootpDaemon(logger, cfgparser)
+        if not args.pxe:
+            daemon = TftpDaemon(logger, cfgparser, daemon)
+        if daemon:
+            daemon.start()
+            while True:
+                daemon.join(0.5)
+                if not daemon.is_alive():
+                    break
+    except Exception as e:
+        print_('\nError: %s' % e, file=sys.stderr)
+        if debug:
+            import traceback
+            print_(traceback.format_exc(), file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
-        print "Aborting..."
+        print_("Aborting...")

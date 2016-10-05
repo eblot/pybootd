@@ -21,14 +21,17 @@ Requirements
 Python
 ------
 
-- Python_ 2.6 or above is required. Python_ 3.x is not yet supported.
-- Optional: Netifaces_ Python module; In its absence, iproute2_ is expected
+- Python_ 2.7 or above is required. Python_ 3.x is not yet supported.
+- Six_ compatibility module
+- Netifaces_ Python module is required on OS X; on Linux only, iproute2_ can be
+  used as an alternative
 - Optional: python-pkg-resources_ Python module
 
 .. _Python: http://python.org/
 .. _Netifaces: http://alastairs-place.net/netifaces/
 .. _iproute2: http://www.linuxfoundation.org/collaborate/workgroups/networking/iproute2
 .. _python-pkg-resources: http://pythonhosted.org/distribute/pkg_resources.html
+.. _Six: http://pythonhosted.org/six
 
 Permissions
 -----------
@@ -84,6 +87,11 @@ Common errors
   ``pool_start`` to some address in the local network you want to
   serve (*eg.* the address of your local server).
 
+``error: Can't assign requested address``
+  This errir is often triggered with an invalid listening address setting.
+  Try listening on all IPv4 interfaces with ``address = 0.0.0.0`` and use ACL
+  to discard requests from network you do not want to serve.
+
 Configuration
 -------------
 
@@ -106,10 +114,10 @@ options.
 
 Some options accept a boolean value. The following values are recognized:
 
-- true values: ``on``, ``true``, ``enable``, ``enabled``, ``yes``, ``high``,
-  ``ok``, ``1``
-- false values: ``off``, ``false``, ``disable``, ``disabled``, ``no``, ``low``,
-  ``ko``, ``0``
+- true values: ``on``, ``high``, ``true``, ``enable``, ``enabled``, ``yes``,
+               ``1``
+- false values: ``off``, ``low``, ``false``, ``disable``, ``disabled``, ``no``,
+                ``0``
 
 The BOOTP daemon associates each MAC address to an assigned IP address. As long
 as the BOOTP daemon is running, the same IP address is always assigned to the
@@ -184,6 +192,9 @@ client requests at least an IP address twice:
    server. Note that most DHCP clients will only consider the first
    DNS address if multiple are provided.
 
+``gateway``
+   Specify gateway address in DHCP reply, default to DHCP server address
+
 ``lease_time``
    Validity in seconds of a DHCP lease. Please note that the BOOTP daemon does
    not manage lease expiration; this value has therefore little meaning.
@@ -224,6 +235,9 @@ client requests at least an IP address twice:
    block. The value for each entry is a boolean, *i.e.*::
 
      AA-BB-CC-DD-EE-FF = enable
+
+  Note that due to a limitation of the configuration parser, ':' byte separator
+  in MAC addresses is not allowed, please use '-' separator.
 
 ``[static_dhcp]`` section
 .........................

@@ -413,6 +413,10 @@ class TftpServer:
 
     def forever(self):
         while True:
+            if self.bootpd:
+                if not self.bootpd.is_alive():
+                    self.log.info('Bootp daemon is dead, exiting')
+                    break
             r, w, e = select.select(self.sock, [], self.sock)
             for sock in r:
                 data, addr = sock.recvfrom(516)

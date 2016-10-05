@@ -18,12 +18,17 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
+import os
 from distutils.core import setup
 
 
 def _read(fname):
-    import os
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
+
+requirements = ['six']
+if os.uname()[0].lower() == 'darwin':
+    requirements.append('netifaces (>= 0.5)')
 
 
 setup(
@@ -37,6 +42,7 @@ setup(
     url='http://github.com/eblot/pybootd',
     download_url='https://github.com/eblot/pybootd/tarball/master',
     packages=['pybootd'],
+    requires=requirements,
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: No Input/Output (Daemon)',
@@ -46,7 +52,6 @@ setup(
             'Lesser General Public License (LGPL)',
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: POSIX',
-        'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
         'Topic :: Internet',
         'Topic :: System :: Installation/Setup',

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -17,23 +17,32 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from ConfigParser import SafeConfigParser
+from array import array
 import commands
 import logging
 import re
 import socket
 import struct
 import sys
+from ConfigParser import SafeConfigParser
+from six import PY3, integer_types, binary_type
 
 try:
     import netifaces
 except ImportError:
+    import os
+    if os.uname()[0].lower() == 'darwin':
+        raise ImportError('netifaces package is not installed')
     netifaces = None
 
 # String values evaluated as true boolean values
 TRUE_BOOLEANS = ['on', 'high', 'true', 'enable', 'enabled', 'yes',  '1']
 # String values evaluated as false boolean values
 FALSE_BOOLEANS = ['off', 'low', 'false', 'disable', 'disabled', 'no', '0']
+# ASCII or '.' filter
+ASCIIFILTER = bytearray((''.join([(
+    (len(repr(chr(_x))) == 3) or (_x == 0x5c)) and chr(_x) or '.'
+    for _x in range(128)]) + '.' * 128).encode('ascii'))
 
 
 def to_int(value):
@@ -99,10 +108,12 @@ def hexline(data, sep=' '):
        of the buffer data
     """
     try:
-        if isinstance(data, (binary_type, Array)):
+        if isinstance(data, (binary_type, array)):
             src = bytearray(data)
         elif isinstance(data, bytearray):
             src = data
+        elif isinstance(data, str):
+            src = data.encode()
         else:
             # data may be a list/tuple
             src = bytearray(b''.join(data))
@@ -156,8 +167,8 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
 
     def logerror(record):
         import traceback
-        print record.msg
-        print record.args
+        print_(record.msg)
+        print_(record.args)
         traceback.print_exc()
     # uncomment the following line to show logger formatting error
     #hdlr.handleError = logerror
@@ -229,7 +240,7 @@ def _iproute_get_iface_config(address):
 def get_iface_config(address):
     if not address:
         return None
-    if netifaces:
+    if not netifaces:
         return _iproute_get_iface_config(address)
     return _netifaces_get_iface_config(address)
 
