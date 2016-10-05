@@ -100,10 +100,11 @@ def main():
         daemon = None
         if not args.tftp:
             daemon = BootpDaemon(logger, cfgparser)
+            daemon.start()
         if not args.pxe:
             daemon = TftpDaemon(logger, cfgparser, daemon)
-        if daemon:
             daemon.start()
+        if daemon:
             while True:
                 daemon.join(0.5)
                 if not daemon.is_alive():
