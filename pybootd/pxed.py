@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import sys
 import time
 from binascii import hexlify
 from pybootd import PRODUCT_NAME
-from util import hexline, to_bool, iptoint, inttoip, get_iface_config
+from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 
 BOOTP_PORT_REQUEST = 67
 BOOTP_PORT_REPLY = 68
@@ -39,97 +39,97 @@ BOOTPFormatSize = struct.calcsize(BOOTPFormat)
 DHCPFormat = '!4bIHH4s4s4s4s16s64s128s4s'
 DHCPFormatSize = struct.calcsize(DHCPFormat)
 
-(BOOTP_OP,BOOTP_HTYPE,BOOTP_HLEN,BOOTP_HOPS,BOOTP_XID,BOOTP_SECS,
- BOOTP_FLAGS,BOOTP_CIADDR,BOOTP_YIADDR,BOOTP_SIADDR,BOOTP_GIADDR,
- BOOTP_CHADDR,BOOTP_SNAME,BOOTP_FILE,BOOTP_VEND) = range(15)
+(BOOTP_OP, BOOTP_HTYPE, BOOTP_HLEN, BOOTP_HOPS, BOOTP_XID, BOOTP_SECS,
+ BOOTP_FLAGS, BOOTP_CIADDR, BOOTP_YIADDR, BOOTP_SIADDR, BOOTP_GIADDR,
+ BOOTP_CHADDR, BOOTP_SNAME, BOOTP_FILE, BOOTP_VEND) = range(15)
 
 BOOTP_FLAGS_NONE = 0
 BOOTP_FLAGS_BROADCAST = 1<<15
 
 COOKIE='\0x63\0x82\0x53\0x63'
 
-DHCP_OPTIONS = {  0: 'Byte padding',
-                  1: 'Subnet mask',
-                  2: 'Time offset',
-                  3: 'Routers',
-                  4: 'Time servers',
-                  5: 'Name servers',
-                  6: 'Domain name servers',
-                  7: 'Log servers',
-                  8: 'Cookie servers',
-                  9: 'Line printer servers',
-                 10: 'Impress servers',
-                 11: 'Resource location servers',
-                 12: 'Host Name', # + PXE extensions
-                 13: 'Boot file size',
-                 14: 'Dump file',
-                 15: 'Domain name',
-                 16: 'Swap server',
-                 17: 'Root path',
-                 18: 'Extensions path',
-                 # --- IP layer / host ---
-                 19: 'IP forwarding',
-                 20: 'Source routing',
-                 21: 'Policy filter',
-                 22: 'Maximum datagram reassembly size',
-                 23: 'Default IP TTL',
-                 24: 'Path MTU aging timeout',
-                 25: 'Path MTU plateau table',
-                 # --- IP Layer / interface ---
-                 26: 'Interface MTU',
-                 27: 'All subnets local',
-                 28: 'Broadcast address',
-                 29: 'Perform mask discovery',
-                 30: 'Mask supplier',
-                 31: 'Perform router discovery',
-                 32: 'Router solicitation address',
-                 33: 'Static route',
-                 # --- Link layer ---
-                 34: 'Trailer encapsulation',
-                 35: 'ARP cache timeout',
-                 36: 'Ethernet encaspulation',
-                 # --- TCP ---
-                 37: 'TCP default TTL',
-                 38: 'TCP keepalive interval',
-                 39: 'TCP keepalive garbage',
-                 # --- Application & Services ---
-                 40: 'Network Information Service domain',
-                 41: 'Network Information servers',
-                 42: 'Network Time Protocol servers',
-                 43: 'Vendor specific',
-                 44: 'NetBIOS over TCP/IP name server',
-                 45: 'NetBIOS over TCP/IP datagram server',
-                 46: 'NetBIOS over TCP/IP node type',
-                 47: 'NetBIOS over TCP/IP scope',
-                 48: 'X Window system font server',
-                 49: 'X Window system display manager',
-                 50: 'Requested IP address',
-                 51: 'IP address lease time',
-                 52: 'Option overload',
-                 53: 'DHCP message',
-                 54: 'Server ID',
-                 55: 'Param request list',
-                 56: 'Error message',
-                 57: 'Message length',
-                 58: 'Renewal time',
-                 59: 'Rebinding time',
-                 60: 'Class ID',
-                 61: 'GUID',
-                 64: 'Network Information Service+ domain',
-                 65: 'Network Information Service+ servers',
-                 66: 'TFTP server name',
-                 67: 'Bootfile name',
-                 68: 'Mobile IP home agent',
-                 69: 'Simple Mail Transport Protocol servers',
-                 70: 'Post Office Protocol servers',
-                 71: 'Network News Transport Protocol servers',
-                 72: 'World Wide Web servers',
-                 73: 'Finger servers',
-                 74: 'Internet Relay Chat server',
-                 93: 'System architecture',
-                 94: 'Network type',
-                 97: 'UUID',
-                 255: 'End of DHCP options' }
+DHCP_OPTIONS = {0: 'Byte padding',
+                1: 'Subnet mask',
+                2: 'Time offset',
+                3: 'Routers',
+                4: 'Time servers',
+                5: 'Name servers',
+                6: 'Domain name servers',
+                7: 'Log servers',
+                8: 'Cookie servers',
+                9: 'Line printer servers',
+                10: 'Impress servers',
+                11: 'Resource location servers',
+                12: 'Host Name',  # + PXE extensions
+                13: 'Boot file size',
+                14: 'Dump file',
+                15: 'Domain name',
+                16: 'Swap server',
+                17: 'Root path',
+                18: 'Extensions path',
+                # --- IP layer / host ---
+                19: 'IP forwarding',
+                20: 'Source routing',
+                21: 'Policy filter',
+                22: 'Maximum datagram reassembly size',
+                23: 'Default IP TTL',
+                24: 'Path MTU aging timeout',
+                25: 'Path MTU plateau table',
+                # --- IP Layer / interface ---
+                26: 'Interface MTU',
+                27: 'All subnets local',
+                28: 'Broadcast address',
+                29: 'Perform mask discovery',
+                30: 'Mask supplier',
+                31: 'Perform router discovery',
+                32: 'Router solicitation address',
+                33: 'Static route',
+                # --- Link layer ---
+                34: 'Trailer encapsulation',
+                35: 'ARP cache timeout',
+                36: 'Ethernet encaspulation',
+                # --- TCP ---
+                37: 'TCP default TTL',
+                38: 'TCP keepalive interval',
+                39: 'TCP keepalive garbage',
+                # --- Application & Services ---
+                40: 'Network Information Service domain',
+                41: 'Network Information servers',
+                42: 'Network Time Protocol servers',
+                43: 'Vendor specific',
+                44: 'NetBIOS over TCP/IP name server',
+                45: 'NetBIOS over TCP/IP datagram server',
+                46: 'NetBIOS over TCP/IP node type',
+                47: 'NetBIOS over TCP/IP scope',
+                48: 'X Window system font server',
+                49: 'X Window system display manager',
+                50: 'Requested IP address',
+                51: 'IP address lease time',
+                52: 'Option overload',
+                53: 'DHCP message',
+                54: 'Server ID',
+                55: 'Param request list',
+                56: 'Error message',
+                57: 'Message length',
+                58: 'Renewal time',
+                59: 'Rebinding time',
+                60: 'Class ID',
+                61: 'GUID',
+                64: 'Network Information Service+ domain',
+                65: 'Network Information Service+ servers',
+                66: 'TFTP server name',
+                67: 'Bootfile name',
+                68: 'Mobile IP home agent',
+                69: 'Simple Mail Transport Protocol servers',
+                70: 'Post Office Protocol servers',
+                71: 'Network News Transport Protocol servers',
+                72: 'World Wide Web servers',
+                73: 'Finger servers',
+                74: 'Internet Relay Chat server',
+                93: 'System architecture',
+                94: 'Network type',
+                97: 'UUID',
+                255: 'End of DHCP options'}
 
 DHCP_DISCOVER = 1
 DHCP_OFFER = 2
@@ -165,18 +165,18 @@ class BootpServer:
     """BOOTP Server
        Implements bootstrap protocol"""
 
-    ACCESS_LOCAL = ['uuid', 'mac'] # Access modes, defined locally
-    ACCESS_REMOTE = ['http']       # Access modes, remotely retrieved
-    (ST_IDLE, ST_PXE, ST_DHCP) = range(3) # Current state
+    ACCESS_LOCAL = ['uuid', 'mac']  # Access modes, defined locally
+    ACCESS_REMOTE = ['http']  # Access modes, remotely retrieved
+    (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
     def __init__(self, logger, config):
         self.sock = []
         self.log = logger
         self.config = config
-        self.uuidpool = {} # key MAC address value, value UUID value
-        self.ippool = {} # key MAC address string, value assigned IP string
-        self.filepool = {} # key IP string, value pathname
-        self.states = {} # key MAC address string, value client state
+        self.uuidpool = {}  # key MAC address value, value UUID value
+        self.ippool = {}  # key MAC address string, value assigned IP string
+        self.filepool = {}  # key IP string, value pathname
+        self.states = {}  # key MAC address string, value client state
         name_ = PRODUCT_NAME.split('-')
         name_[0] = 'bootp'
         self.bootp_section = '_'.join(name_)
@@ -184,7 +184,7 @@ class BootpServer:
         if not self.pool_start:
             raise BootpError('Missing pool_start definition')
         self.pool_count = int(self.config.get(self.bootp_section,
-                              'pool_count', '10'))
+                                              'pool_count', '10'))
 
         self.netconfig = get_iface_config(self.pool_start)
         if not self.netconfig:
@@ -194,8 +194,8 @@ class BootpServer:
             raise BootpError('Unable to detect network configuration')
 
         keys = sorted(self.netconfig.keys())
-        self.log.info('Using %s' % ', '.join(map(':'.join,
-                                zip(keys, [self.netconfig[k] for k in keys]))))
+        self.log.info('Using %s' % ', '.join(map(
+            ':'.join, zip(keys, [self.netconfig[k] for k in keys]))))
         nlist = self.config.get(self.bootp_section, 'notify')
         self.notify = []
         if nlist:
@@ -259,7 +259,7 @@ class BootpServer:
     def forever(self):
         while True:
             try:
-                r,w,e = select.select(self.sock, [], self.sock)
+                r, w, e = select.select(self.sock, [], self.sock)
                 for sock in r:
                     data, addr = sock.recvfrom(556)
                     self.handle(sock, addr, data)
@@ -283,10 +283,10 @@ class BootpServer:
             tail = tail[2+length:]
             try:
                 option = DHCP_OPTIONS[tag]
-                self.log.debug(" option %d: '%s', size:%d %s" % \
+                self.log.debug(" option %d: '%s', size:%d %s" %
                                (tag, option, length, hexline(value)))
             except KeyError:
-                self.log.debug('  unknown option %d, size:%d %s:' % \
+                self.log.debug('  unknown option %d, size:%d %s:' %
                                (tag, length, hexline(value)))
                 continue
             dhcp_tags[tag] = value
@@ -360,9 +360,9 @@ class BootpServer:
             uuid = self.uuidpool.get(mac_addr, None)
             pxe = False
             self.log.info('PXE UUID not present in request')
-        uuid_str = uuid and ('%s-%s-%s-%s-%s' % \
-            tuple([hexlify(x) for x in uuid[0:4], uuid[4:6], uuid[6:8],
-                                       uuid[8:10], uuid[10:16]])).upper()
+        uuid_str = uuid and ('%s-%s-%s-%s-%s' % tuple(
+            [hexlify(x) for x in uuid[0:4], uuid[4:6], uuid[6:8],
+             uuid[8:10], uuid[10:16]])).upper()
         if uuid_str:
             self.log.info('UUID is %s for MAC %s' % (uuid_str, mac_str))
 
@@ -380,7 +380,7 @@ class BootpServer:
             if not pxe and (dhcp_msg_type == DHCP_REQUEST):
                 # OS is booting up, and confirm a previous DHCP dicovery
                 newstate = self.ST_DHCP
-        else: # currentstate == self.ST_DHCP
+        else:  # currentstate == self.ST_DHCP
             if pxe:
                 # OS was running but the BIOS is performing a DHCP request:
                 # board has been restarted
@@ -394,7 +394,7 @@ class BootpServer:
                 self.config.has_option(self.bootp_section, sdhcp) and \
                 to_bool(self.config.get(self.bootp_section, sdhcp))
             if not simple_dhcp:
-               return
+                return
             if not dhcp_msg_type:
                 # Legacy DHCP: assuming discover by default
                 dhcp_msg_type = DHCP_DISCOVER
@@ -410,7 +410,7 @@ class BootpServer:
                 path = self.config.get(self.access, pxe and 'pxe' or 'dhcp')
                 timeout = int(self.config.get(self.access, 'timeout', '5'))
                 always_check = self.config.get(self.access, 'always_check')
-                parameters = {'mac' : mac_str}
+                parameters = {'mac': mac_str}
                 if uuid:
                     parameters['uuid'] = uuid_str
                 if not pxe and mac_str in self.ippool:
@@ -420,7 +420,7 @@ class BootpServer:
                 # required.
                 checkhost = currentstate != newstate
                 if to_bool(always_check):
-                  checkhost = True
+                    checkhost = True
                 if checkhost:
                     query = urllib.urlencode(parameters)
                     urlparts = (self.access, netloc, path, query, '')
@@ -458,15 +458,16 @@ class BootpServer:
                 item = locals()['%s_str' % self.access]
                 if not item:
                     self.log.info('Missing %s identifier, '
-                        'ignoring %s request' % (self.access, mac_str))
+                                  'ignoring %s request' %
+                                  (self.access, mac_str))
                     return
-                if not item in self.acl:
+                if item not in self.acl:
                     self.log.info('%s is not in ACL list, '
-                        'ignoring %s request' % (item, mac_str))
+                                  'ignoring %s request' % (item, mac_str))
                     return
                 if not self.acl[item]:
                     self.log.info('%s access is disabled, '
-                        'ignoring %s request' % (item, mac_str))
+                                  'ignoring %s request' % (item, mac_str))
                     return
             else:
                 item = locals()['%s_str' % self.access]
@@ -482,8 +483,8 @@ class BootpServer:
             ip = None
             if mac_str in self.ippool:
                 ip = self.ippool[mac_str]
-                self.log.info('Lease for MAC %s already defined as IP %s' % \
-                                (mac_str, ip))
+                self.log.info('Lease for MAC %s already defined as IP %s' %
+                              (mac_str, ip))
             else:
                 ip = self.config.get(mac_str.lower(), "ipv4")
                 if ip:
@@ -508,7 +509,7 @@ class BootpServer:
             mask = iptoint("0.0.0.0")
 
             reply_broadcast = iptoint(ip) & mask
-            reply_broadcast |= (~mask)&((1<<32)-1)
+            reply_broadcast |= (~mask) & ((1 << 32)-1)
             buf[BOOTP_YIADDR] = socket.inet_aton(ip)
             buf[BOOTP_SECS] = 0
             buf[BOOTP_FLAGS] = BOOTP_FLAGS_BROADCAST
@@ -539,12 +540,12 @@ class BootpServer:
         if dhcp_msg_type == DHCP_DISCOVER:
             self.log.debug('DHCP DISCOVER')
             dhcp_reply = DHCP_OFFER
-            self.log.info('Offering lease for MAC %s: IP %s' % \
+            self.log.info('Offering lease for MAC %s: IP %s' %
                           (mac_str, ip))
         elif dhcp_msg_type == DHCP_REQUEST:
             self.log.debug('DHCP REQUEST')
             dhcp_reply = DHCP_ACK
-            self.log.info('New lease for MAC %s: IP %s' % \
+            self.log.info('New lease for MAC %s: IP %s' %
                           (mac_str, ip))
         elif dhcp_msg_type == DHCP_RELEASE:
             self.log.info('DHCP RELEASE')
@@ -601,7 +602,8 @@ class BootpServer:
                 dns_ip = socket.inet_aton(dns_str)
                 pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += struct.pack('!BBI', DHCP_LEASE_TIME, 4,
-                           int(self.config.get(self.bootp_section, 'lease_time',
+                           int(self.config.get(self.bootp_section,
+                                               'lease_time',
                                                str(24*3600))))
         pkt += struct.pack('!BB', DHCP_END, 0)
 
@@ -623,8 +625,8 @@ class BootpServer:
 
         # update the current state
         if currentstate != newstate:
-            self.log.info('Moving from state %d to state %d' % \
-                            (currentstate, newstate))
+            self.log.info('Moving from state %d to state %d' %
+                          (currentstate, newstate))
             self.states[mac_str] = newstate
 
     def get_dns_servers(self):

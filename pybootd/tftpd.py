@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -57,7 +57,7 @@ class TftpConnection(object):
         self.server = server
         self.client_addr = None
         self.sock = None
-        self.active = 0 # 0: inactive, 1: active
+        self.active = 0  # 0: inactive, 1: active
         self.blockNumber = 0
         self.lastpkt = ''
         self.mode = ''
@@ -86,7 +86,7 @@ class TftpConnection(object):
         timeout = self.timeout
         retry = self.server.retry
         while retry:
-            r,w,e = select.select([fno], [], [fno], timeout)
+            r, w, e = select.select([fno], [], [fno], timeout)
             if not r:
                 # We timed out -- retransmit
                 retry = retry - 1
@@ -126,7 +126,7 @@ class TftpConnection(object):
         buf = buffer(data)
         pkt = {}
         opcode = pkt['opcode'] = unpack('!h', buf[:2])[0]
-        if ( opcode == self.RRQ ) or ( opcode == self.WRQ ):
+        if (opcode == self.RRQ) or (opcode == self.WRQ):
             resource, mode, options = string.split(data[2:], '\000', 2)
             resource = self.server.fcre.sub(self._filter_file, resource)
             if self.server.root and self.is_url(self.server.root):
@@ -137,7 +137,7 @@ class TftpConnection(object):
                 except Exception:
                     if not self.server.genfilecre.match(resource):
                         if resource.startswith('^%s' % os.sep):
-                            resource = os.path.join( \
+                            resource = os.path.join(
                                 os.path.dirname(sys.argv[0]),
                                     resource.lstrip('^%s' % os.sep))
                         elif self.server.root:
@@ -149,10 +149,10 @@ class TftpConnection(object):
                                 # Relative root directory, from the daemon path
                                 daemonpath = os.path.dirname(sys.argv[0])
                                 if not daemonpath.startswith(os.sep):
-                                    daemonpath = os.path.normpath( \
+                                    daemonpath = os.path.normpath(
                                         os.path.join(os.getcwd(), daemonpath))
-                                resource = os.path.join(daemonpath,
-                                        self.server.root, resource)
+                                resource = os.path.join(
+                                    daemonpath, self.server.root, resource)
                         resource = os.path.normpath(resource)
             self.log.info("Resource '%s'" % resource)
             pkt['filename'] = resource
@@ -230,14 +230,14 @@ class TftpConnection(object):
             # We received the correct ACK
             self.handle_ack(pkt)
         else:
-            self.log.warn('Expecting ACK for block %d, received %d' % \
-                            (pkt['block'], self.blockNumber))
+            self.log.warn('Expecting ACK for block %d, received %d' %
+                          (pkt['block'], self.blockNumber))
 
     def recv_data(self, pkt):
         self.log.debug('recv_data')
         if pkt['block'] == self.blockNumber:
             # We received the correct DATA packet
-            self.active = ( self.blocksize == len(pkt['data']) )
+            self.active = (self.blocksize == len(pkt['data']))
             self.handle_data(pkt)
 
     def recv_err(self, pkt):
@@ -263,8 +263,8 @@ class TftpConnection(object):
                 name = self.file.name
                 size = os.stat(name)[6]
                 try:
-                    self.log.info('File %s send in %.1f s (%.2f MB/s)' % \
-                                    (name, total, size/(total*1024*1024)))
+                    self.log.info('File %s send in %.1f s (%.2f MB/s)' %
+                                  (name, total, size/(total*1024*1024)))
                 except ZeroDivisionError:
                     self.log.warn('File %s send in no time' % name)
             except AttributeError:
@@ -320,7 +320,7 @@ class TftpConnection(object):
                     self.send_error(1, 'Cannot access resource')
                     self.log.warn('Cannot stat resource %s' % resource)
                     return
-            self.log.info('Send size request file %s size: %d' % \
+            self.log.info('Send size request file %s size: %d' %
                           (resource, filesize))
             options = [('tsize', str(filesize))]
             if 'blksize' in pkt:
@@ -340,10 +340,10 @@ class TftpConnection(object):
                     self.file = open(resource, 'rb')
             except Exception:
                 self.send_error(1, 'Cannot open resource')
-                self.log.warn('Cannot open file for reading %s: %s' % \
+                self.log.warn('Cannot open file for reading %s: %s' %
                               sys.exc_info()[:2])
                 return
-        if not 'tsize' in pkt:
+        if 'tsize' not in pkt:
             self.send_data(self.file.read(self.blocksize))
 
     def handle_wrq(self, pkt):
@@ -358,7 +358,7 @@ class TftpConnection(object):
             self.file = open(resource, 'wb')
         except:
             self.send_error(1, 'Cannot open file')
-            self.log.error('Cannot open file for writing %s: %s' % \
+            self.log.error('Cannot open file for writing %s: %s' %
                            sys.exc_info()[:2])
             return
         self.send_ack()
@@ -413,7 +413,7 @@ class TftpServer:
 
     def forever(self):
         while True:
-            r,w,e = select.select(self.sock, [], self.sock)
+            r, w, e = select.select(self.sock, [], self.sock)
             for sock in r:
                 data, addr = sock.recvfrom(516)
                 t = TftpConnection(self)

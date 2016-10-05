@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -20,6 +20,7 @@
 import os
 import sys
 
+
 def _get_package_name(default='', version='1.5.0'):
     try:
         from pkg_resources import WorkingSet
@@ -27,21 +28,24 @@ def _get_package_name(default='', version='1.5.0'):
         ws = []
     else:
         ws = WorkingSet()
-    _path, _ = os.path.split(os.path.dirname( \
-                                    sys.modules['pybootd'].__file__))
+    _path, _ = os.path.split(os.path.dirname(
+        sys.modules['pybootd'].__file__))
     _path = os.path.normpath(_path)
     if 'nt' not in os.name:
         for dist in ws:
             if os.path.samefile(os.path.normpath(dist.location), _path):
                 return dist.project_name, dist.version
-    else: #tweak for windows
+    else:  # tweak for windows
         _path = os.path.abspath(_path).lower()
         for dist in ws:
             if 'pybootd' in dist.location:
                 if _path == os.path.abspath(dist.location).lower():
                     return dist.project_name, dist.version
     return default, version
+
+
 PRODUCT_NAME, __version__ = _get_package_name('pybootd')
+
 
 def pybootd_path(path):
     newpath = ''

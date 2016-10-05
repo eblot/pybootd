@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@ from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from optparse import OptionParser
 from util import logger_factory, to_bool, to_int, EasyConfigParser
 
+
 class HttpdDaemon(HTTPServer):
 
     class ReqHandler(BaseHTTPRequestHandler):
@@ -40,17 +41,17 @@ class HttpdDaemon(HTTPServer):
                     for uuid in uuids:
                         uuid = uuid.upper().strip()
                         authorized = self.server.uuids.get(uuid, False)
-                        log.info('UUID %s is %s' % \
-                            (uuid, authorized and 'authorized' or 'rejected'))
+                        log.info('UUID %s is %s' % (
+                            uuid, authorized and 'authorized' or 'rejected'))
                         if authorized:
                             break
                 else:
                     authorized = False
                     log.warn('Request does not specify a UUID')
                 if authorized:
-                    response = '\n\n' # HTTP protocol, line feed after headers
+                    response = '\n\n'  # HTTP protocol, line feed after headers
                     # dummy generation of a tester number
-                    tester = sum([to_int('0x%s' %x) for x in uuid.split('-')])
+                    tester = sum([to_int('0x%s' % x) for x in uuid.split('-')])
                     clientname = 'Tester-%03d' % (tester & 0xFF)
                     log.info("UUID %s is assigned as %s" % (uuid, clientname))
                     response += 'Client: %s\n' % clientname

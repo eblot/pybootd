@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2011 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@ import threading
 
 
 class BootpDaemon(threading.Thread):
+
     def __init__(self, logger, config):
         threading.Thread.__init__(self, name="BootpDeamon")
         self.daemon = True
@@ -46,6 +47,7 @@ class BootpDaemon(threading.Thread):
 
 
 class TftpDaemon(threading.Thread):
+
     def __init__(self, logger, config, bootpd=None):
         threading.Thread.__init__(self, name="TftpDeamon")
         self.daemon = True
@@ -70,10 +72,10 @@ def main():
     (options, args) = optparser.parse_args(sys.argv[1:])
 
     if not options.config:
-        raise AssertionError('Missing configuration file')
+        optparser.error('Missing configuration file')
 
     if options.pxe and options.tftp:
-        raise AssertionError('Cannot exclude both servers')
+        optparser.error('Cannot exclude both servers')
 
     cfgparser = EasyConfigParser()
     with open(pybootd_path(options.config), 'rt') as config:
@@ -95,7 +97,7 @@ def main():
         while True:
             import time
             time.sleep(5)
-    except AssertionError, e:
+    except Exception, e:
         print >> sys.stderr, "Error: %s" % str(e)
         sys.exit(1)
     except KeyboardInterrupt:
