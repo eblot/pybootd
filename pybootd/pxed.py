@@ -409,6 +409,7 @@ class BootpServer:
                 netloc = self.config.get(self.access, 'location')
                 path = self.config.get(self.access, pxe and 'pxe' or 'dhcp')
                 timeout = int(self.config.get(self.access, 'timeout', '5'))
+                always_check = self.config.get(self.access, 'always_check')
                 parameters = {'mac' : mac_str}
                 if uuid:
                     parameters['uuid'] = uuid_str
@@ -417,7 +418,10 @@ class BootpServer:
                 item = uuid_str or mac_str
                 # only bother the authentication host when a state change is
                 # required.
-                if currentstate != newstate:
+                checkhost = currentstate != newstate
+                if to_bool(always_check):
+                  checkhost = True
+                if checkhost:
                     query = urllib.urlencode(parameters)
                     urlparts = (self.access, netloc, path, query, '')
                     url = urlparse.urlunsplit(urlparts)
