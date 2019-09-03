@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -21,14 +21,13 @@
 """Boot up server, a tiny BOOTP/DHCP/TFTP/PXE server"""
 
 
-import os
-import sys
-from pxed import BootpServer
-from pybootd import pybootd_path, PRODUCT_NAME, __version__ as VERSION
-from six import print_
-from tftpd import TftpServer
-from util import logger_factory, EasyConfigParser
+from os.path import isfile
 from threading import Thread
+from sys import exit as sysexit, modules, stderr
+from . import pybootd_path, PRODUCT_NAME, __version__ as VERSION
+from .pxed import BootpServer
+from .tftpd import TftpServer
+from .util import logger_factory, EasyConfigParser
 
 
 class BootpDaemon(Thread):
@@ -65,7 +64,7 @@ def main():
     debug = False
     try:
         from argparse import ArgumentParser
-        argparser = ArgumentParser(description=sys.modules[__name__].__doc__)
+        argparser = ArgumentParser(description=modules[__name__].__doc__)
         argparser.add_argument('-c', '--config', dest='config',
                                default='pybootd/etc/pybootd.ini',
                                help='configuration file')
@@ -80,7 +79,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        if not os.path.isfile(args.config):
+        if not isfile(args.config):
             argparser.error('Invalid configuration file')
 
         if args.pxe and args.tftp:
@@ -110,10 +109,10 @@ def main():
                 if not daemon.is_alive():
                     break
     except Exception as e:
-        print_('\nError: %s' % e, file=sys.stderr)
+        print('\nError: %s' % e, file=stderr)
         if debug:
             import traceback
-            print_(traceback.format_exc(), file=sys.stderr)
-        sys.exit(1)
+            print(traceback.format_exc(), file=stderr)
+        sysexit(1)
     except KeyboardInterrupt:
-        print_("Aborting...")
+        print("Aborting...")

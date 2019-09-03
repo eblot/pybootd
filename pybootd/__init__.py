@@ -21,7 +21,7 @@ import os
 import sys
 
 
-def _get_package_name(default='', version='1.5.0'):
+def _get_package_name(default='', version='1.6.0'):
     try:
         from pkg_resources import WorkingSet
     except ImportError:

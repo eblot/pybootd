@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -25,13 +25,13 @@ import string
 import struct
 import sys
 import time
-import thread
-import urllib2
-import urlparse
-from ConfigParser import NoSectionError
-from cStringIO import StringIO
-from pybootd import pybootd_path
-from util import hexline
+from configparser import NoSectionError
+from io import StringIO
+from threading import Thread
+from urllib.parse import urlparse
+from urllib.request import urlopen
+from . import pybootd_path
+from .util import hexline
 
 __all__ = ['TftpServer']
 
@@ -217,8 +217,8 @@ class TftpConnection(object):
                 else:
                     raise TftpError(5, 'Invalid opcode')
             self.log.debug('End of active: %s:%s' % addr)
-        except TftpError, detail:
-            self.send_error(detail[0], detail[1])
+        except TftpError as exc:
+            self.send_error(exc[0], exc[1])
         except:
             import traceback
             self.log.error(traceback.format_exc())
@@ -310,7 +310,7 @@ class TftpConnection(object):
             else:
                 try:
                     if self.is_url(resource):
-                        rp = urllib2.urlopen(resource)
+                        rp = urlopen(resource)
                         meta = rp.info()
                         filesize = int(meta.getheaders('Content-Length')[0])
                     else:
@@ -333,7 +333,7 @@ class TftpConnection(object):
             try:
                 if self.is_url(resource):
                     self.log.info("Sending resource '%s'" % resource)
-                    self.file = urllib2.urlopen(resource)
+                    self.file = urlopen(resource)
                 else:
                     resource = os.path.realpath(resource)
                     self.log.info("Sending file '%s'" % resource)
@@ -420,8 +420,9 @@ class TftpServer:
             r, w, e = select.select(self.sock, [], self.sock)
             for sock in r:
                 data, addr = sock.recvfrom(516)
-                t = TftpConnection(self)
-                thread.start_new_thread(t.connect, (addr, data))
+                tc = TftpConnection(self)
+                thread = Thread(tc.connect, (addr, data))
+                thread.start()
 
     def filter_file(self, connexion, mo):
         # extract the position of the matching pattern, then extract the
@@ -442,12 +443,12 @@ class TftpServer:
             for pos, pattern in enumerate(self.config.options('filters'), 1):
                 value = self.config.get('filters', pattern).strip()
                 pattern = pattern.strip('\r\n \t')
-                pattern = pattern.replace('.', '\.')
-                pattern = pattern.replace('*', '.*').replace('?', '.')
+                pattern = pattern.replace(r'.', r'\.')
+                pattern = pattern.replace(r'*', r'.*').replace(r'?', r'.')
                 pname = 'p%d' % pos
                 replacements[pname] = value
-                patterns.append('(?P<%s>%s)' % (pname, pattern))
-            xre = '^(?:\./)?(?:%s)$' % '|'.join(patterns)
+                patterns.append(r'(?P<%s>%s)' % (pname, pattern))
+            xre = r'^(?:\./)?(?:%s)$' % r'|'.join(patterns)
         except NoSectionError:
-            xre = '^$'
+            xre = r'^$'
         return (re.compile(xre), replacements)
