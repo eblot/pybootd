@@ -24,7 +24,7 @@
 from os.path import isfile
 from threading import Thread
 from sys import exit as sysexit, modules, stderr
-from . import pybootd_path, PRODUCT_NAME, __version__ as VERSION
+from . import pybootd_path, __version__
 from .pxed import BootpServer
 from .tftpd import TftpServer
 from .util import logger_factory, EasyConfigParser
@@ -94,7 +94,7 @@ def main():
                                 logfile=cfgparser.get('logger', 'file'),
                                 level=cfgparser.get('logger', 'level',
                                                     'info'))
-        logger.info('-'.join((PRODUCT_NAME, VERSION)))
+        logger.info('-'.join(('pybootd', __version__)))
 
         daemon = None
         if not args.tftp:

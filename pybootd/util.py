@@ -17,7 +17,6 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from array import array
 from configparser import SafeConfigParser, InterpolationSyntaxError
 from logging import (DEBUG, INFO, ERROR, CRITICAL, WARNING,
                      Formatter, FileHandler, StreamHandler, getLogger)
@@ -28,7 +27,6 @@ from socket import inet_aton, inet_ntoa
 from subprocess import run
 from struct import pack as spack, unpack as sunpack
 from sys import stderr
-
 
 try:
     import netifaces
@@ -112,7 +110,7 @@ def hexline(data, sep=' '):
        of the buffer data
     """
     try:
-        if isinstance(data, (bytes, array)):
+        if isinstance(data, bytes):
             src = bytearray(data)
         elif isinstance(data, bytearray):
             src = data

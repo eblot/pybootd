@@ -18,22 +18,21 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 import os
-import re
-import select
-import socket
-import string
-import struct
-import sys
-import time
 from configparser import NoSectionError
 from io import StringIO
+from re import compile as recompile, sub as resub
+from select import select
+from socket import socket, AF_INET, SOCK_DGRAM
+from struct import pack as spack, unpack as sunpack
+from sys import argv, exc_info
 from threading import Thread
+from time import time as now
+from traceback import print_exc
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from . import pybootd_path
 from .util import hexline
 
-__all__ = ['TftpServer']
 
 TFTP_PORT = 69
 
@@ -86,7 +85,7 @@ class TftpConnection(object):
         timeout = self.timeout
         retry = self.server.retry
         while retry:
-            r, w, e = select.select([fno], [], [fno], timeout)
+            r, w, e = select([fno], [], [fno], timeout)
             if not r:
                 # We timed out -- retransmit
                 retry = retry - 1
@@ -121,13 +120,13 @@ class TftpConnection(object):
         path = self.server.bootpd.get_filename(client_ip)
         return path
 
-    def parse(self, data, unpack=struct.unpack):
+    def parse(self, data, unpack=sunpack):
         self.log.debug('parse')
         buf = buffer(data)
         pkt = {}
         opcode = pkt['opcode'] = unpack('!h', buf[:2])[0]
         if (opcode == self.RRQ) or (opcode == self.WRQ):
-            resource, mode, options = string.split(data[2:], '\000', 2)
+            resource, mode, options = data[2:].split('\000', 2)
             resource = self.server.fcre.sub(self._filter_file, resource)
             if self.server.root and self.is_url(self.server.root):
                 resource = '%s/%s' % (self.server.root, resource)
@@ -138,7 +137,7 @@ class TftpConnection(object):
                     if not self.server.genfilecre.match(resource):
                         if resource.startswith('^%s' % os.sep):
                             resource = os.path.join(
-                                os.path.dirname(sys.argv[0]),
+                                os.path.dirname(argv[0]),
                                     resource.lstrip('^%s' % os.sep))
                         elif self.server.root:
                             if self.server.root.startswith(os.sep):
@@ -147,7 +146,7 @@ class TftpConnection(object):
                                                         resource)
                             else:
                                 # Relative root directory, from the daemon path
-                                daemonpath = os.path.dirname(sys.argv[0])
+                                daemonpath = os.path.dirname(argv[0])
                                 if not daemonpath.startswith(os.sep):
                                     daemonpath = os.path.normpath(
                                         os.path.join(os.getcwd(), daemonpath))
@@ -220,8 +219,7 @@ class TftpConnection(object):
         except TftpError as exc:
             self.send_error(exc[0], exc[1])
         except:
-            import traceback
-            self.log.error(traceback.format_exc())
+            self.log.error(format_exc())
         self.log.debug('Ending connection %s:%s' % addr)
 
     def recv_ack(self, pkt):
@@ -245,19 +243,19 @@ class TftpConnection(object):
         self.handle_err(pkt)
         self.retransmit()
 
-    def send_data(self, data, pack=struct.pack):
+    def send_data(self, data, pack=spack):
         self.log.debug('send_data')
         if not self.time:
-            self.time = time.time()
+            self.time = now()
         blocksize = self.blocksize
         block = self.blockNumber = self.blockNumber + 1
         lendata = len(data)
-        format = '!hh%ds' % lendata
-        pkt = pack(format, self.DATA, block, data)
+        fmt = '!hh%ds' % lendata
+        pkt = pack(fmt, self.DATA, block, data)
         self.send(pkt)
         self.active = (len(data) == blocksize)
         if not self.active and self.time:
-            total = time.time()-self.time
+            total = now()-self.time
             self.time = 0
             try:
                 name = self.file.name
@@ -271,26 +269,24 @@ class TftpConnection(object):
                 # StringIO does not have a 'name' attribute
                 pass
             except Exception:
-                import traceback
-                traceback.print_exc()
-                pass
+                print_exc()
 
-    def send_ack(self, pack=struct.pack):
+    def send_ack(self, pack=spack):
         self.log.debug('send_ack')
         block = self.blockNumber
         self.blockNumber = self.blockNumber + 1
-        format = '!hh'
-        pkt = pack(format, self.ACK, block)
+        fmt = '!hh'
+        pkt = pack(fmt, self.ACK, block)
         self.send(pkt)
 
-    def send_error(self, errnum, errtext, pack=struct.pack):
+    def send_error(self, errnum, errtext, pack=spack):
         self.log.debug('send_error')
         errtext = errtext + '\000'
-        format = '!hh%ds' % len(errtext)
-        outdata = pack(format, self.ERR, errnum, errtext)
+        fmt = '!hh%ds' % len(errtext)
+        outdata = pack(fmt, self.ERR, errnum, errtext)
         self.sock.sendto(outdata, self.client_addr)
 
-    def send_oack(self, options, pack=struct.pack):
+    def send_oack(self, options, pack=spack):
         self.log.debug('send_oack')
         pkt = pack('!h', self.OACK)
         for k, v in options:
@@ -341,7 +337,7 @@ class TftpConnection(object):
             except Exception:
                 self.send_error(1, 'Cannot open resource')
                 self.log.warn('Cannot open file for reading %s: %s' %
-                              sys.exc_info()[:2])
+                              exc_info()[:2])
                 return
         if 'tsize' not in pkt:
             self.send_data(self.file.read(self.blocksize))
@@ -359,7 +355,7 @@ class TftpConnection(object):
         except:
             self.send_error(1, 'Cannot open file')
             self.log.error('Cannot open file for writing %s: %s' %
-                           sys.exc_info()[:2])
+                           exc_info()[:2])
             return
         self.send_ack()
 
@@ -398,7 +394,7 @@ class TftpServer:
         self.retry = int(self.config.get('tftp', 'blocksize', '5'))
         self.root = self.config.get('tftp', 'root', os.getcwd())
         self.fcre, self.filepatterns = self.get_file_filters()
-        self.genfilecre = re.compile(r'\[(?P<name>[\w\.\-]+)\]')
+        self.genfilecre = recompile(r'\[(?P<name>[\w\.\-]+)\]')
 
     def bind(self):
         netconfig = self.bootpd and self.bootpd.get_netconfig()
@@ -407,7 +403,7 @@ class TftpServer:
         if not host:
             raise TftpError('TFTP address no defined')
         port = int(self.config.get('tftp', 'port', str(TFTP_PORT)))
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = socket(AF_INET, SOCK_DGRAM)
         self.sock.append(sock)
         sock.bind((host, port))
 
@@ -417,7 +413,7 @@ class TftpServer:
                 if not self.bootpd.is_alive():
                     self.log.info('Bootp daemon is dead, exiting')
                     break
-            r, w, e = select.select(self.sock, [], self.sock)
+            r, w, e = select(self.sock, [], self.sock)
             for sock in r:
                 data, addr = sock.recvfrom(516)
                 tc = TftpConnection(self)
@@ -433,7 +429,7 @@ class TftpServer:
             if not filename:
                 continue
             filepattern = self.filepatterns[group]
-            return re.sub(r'\{(\w+)\}', connexion._dynreplace, filepattern)
+            return resub(r'\{(\w+)\}', connexion._dynreplace, filepattern)
         raise TftpError('Internal error, file matching pattern issue')
 
     def get_file_filters(self):
@@ -451,4 +447,4 @@ class TftpServer:
             xre = r'^(?:\./)?(?:%s)$' % r'|'.join(patterns)
         except NoSectionError:
             xre = r'^$'
-        return (re.compile(xre), replacements)
+        return (recompile(xre), replacements)
