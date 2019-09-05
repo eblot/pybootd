@@ -182,6 +182,8 @@ class BootpServer:
     ACCESS_REMOTE = ['http']  # Access modes, remotely retrieved
     (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
+    BOOTP_SECTION = 'bootpd'
+
     def __init__(self, logger, config):
         self.sock = []
         self.log = logger
@@ -190,16 +192,15 @@ class BootpServer:
         self.ippool = {}  # key MAC address string, value assigned IP string
         self.filepool = {}  # key IP string, value pathname
         self.states = {}  # key MAC address string, value client state
-        self.bootp_section = 'bootp'
-        self.pool_start = self.config.get(self.bootp_section, 'pool_start')
+        self.pool_start = self.config.get(self.BOOTP_SECTION, 'pool_start')
         if not self.pool_start:
             raise BootpError('Missing pool_start definition')
-        self.pool_count = int(self.config.get(self.bootp_section,
+        self.pool_count = int(self.config.get(self.BOOTP_SECTION,
                                               'pool_count', '10'))
 
         self.netconfig = get_iface_config(self.pool_start)
         if not self.netconfig:
-            host = self.config.get(self.bootp_section, 'address', '0.0.0.0')
+            host = self.config.get(self.BOOTP_SECTION, 'address', '0.0.0.0')
             self.netconfig = get_iface_config(host)
         if not self.netconfig:
             # the available networks on the host may not match the config...
@@ -208,7 +209,7 @@ class BootpServer:
         keys = sorted(self.netconfig.keys())
         self.log.info('Using %s' % ', '.join(map(
             ':'.join, zip(keys, [self.netconfig[k] for k in keys]))))
-        nlist = self.config.get(self.bootp_section, 'notify')
+        nlist = self.config.get(self.BOOTP_SECTION, 'notify')
         self.notify = []
         if nlist:
             try:
@@ -218,7 +219,7 @@ class BootpServer:
                     self.notify.append((n[0], int(n[1])))
             except Exception as exc:
                 raise BootpError('Invalid notification URL: %s' % exc)
-        access = self.config.get(self.bootp_section, 'access')
+        access = self.config.get(self.BOOTP_SECTION, 'access')
         if not access:
             self.acl = None
         else:
@@ -257,8 +258,8 @@ class BootpServer:
         return self.netconfig
 
     def bind(self):
-        host = self.config.get(self.bootp_section, 'address', '0.0.0.0')
-        port = self.config.get(self.bootp_section, 'port',
+        host = self.config.get(self.BOOTP_SECTION, 'address', '0.0.0.0')
+        port = self.config.get(self.BOOTP_SECTION, 'port',
                                str(BOOTP_PORT_REQUEST))
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
@@ -398,8 +399,8 @@ class BootpServer:
         if newstate == self.ST_IDLE:
             sdhcp = 'allow_simple_dhcp'
             simple_dhcp = \
-                self.config.has_option(self.bootp_section, sdhcp) and \
-                to_bool(self.config.get(self.bootp_section, sdhcp))
+                self.config.has_option(self.BOOTP_SECTION, sdhcp) and \
+                to_bool(self.config.get(self.BOOTP_SECTION, sdhcp))
             if not simple_dhcp:
                 self.log.info('Request from %s ignored (idle state)' % mac_str)
                 return
@@ -497,7 +498,7 @@ class BootpServer:
                 raise BootpError('No more IP available in definined pool')
 
             mask = iptoint(self.config.get(
-                self.bootp_section, 'netmask', self.netconfig['mask']))
+                self.BOOTP_SECTION, 'netmask', self.netconfig['mask']))
             reply_broadcast = iptoint(ip) & mask
             reply_broadcast |= (~mask) & ((1 << 32)-1)
             buf[BOOTP_YIADDR] = inet_aton(ip)
@@ -517,12 +518,12 @@ class BootpServer:
         buf[BOOTP_SIADDR] = inet_aton(server_addr)
         # sname
         buf[BOOTP_SNAME] = \
-            '.'.join([self.config.get(self.bootp_section,
+            '.'.join([self.config.get(self.BOOTP_SECTION,
                                       'servername', 'unknown'),
-                      self.config.get(self.bootp_section,
+                      self.config.get(self.BOOTP_SECTION,
                                       'domain', 'localdomain')]).encode()
         # file
-        buf[BOOTP_FILE] = self.config.get(self.bootp_section,
+        buf[BOOTP_FILE] = self.config.get(self.BOOTP_SECTION,
                                           'boot_file', '\x00').encode()
 
         if not dhcp_msg_type:
@@ -573,18 +574,18 @@ class BootpServer:
         pkt += spack('!BB4s', DHCP_SERVER, 4, server)
 
         mask = inet_aton(self.config.get(
-            self.bootp_section, 'netmask', self.netconfig['mask']))
+            self.BOOTP_SECTION, 'netmask', self.netconfig['mask']))
 
         pkt += spack('!BB4s', DHCP_IP_MASK, 4, mask)
 
-        gateway_addr = self.config.get(self.bootp_section, 'gateway', '')
+        gateway_addr = self.config.get(self.BOOTP_SECTION, 'gateway', '')
         if gateway_addr:
             gateway = inet_aton(gateway_addr)
         else:
             gateway = server
         pkt += spack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
 
-        dns = self.config.get(self.bootp_section,
+        dns = self.config.get(self.BOOTP_SECTION,
                               'dns', None)
         if dns:
             if dns.lower() == 'auto':
@@ -595,7 +596,7 @@ class BootpServer:
                 dns_ip = inet_aton(dns_str)
                 pkt += spack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += spack('!BBI', DHCP_LEASE_TIME, 4,
-                           int(self.config.get(self.bootp_section,
+                           int(self.config.get(self.BOOTP_SECTION,
                                                'lease_time',
                                                str(24*3600))))
         pkt += spack('!BB', DHCP_END, 0)

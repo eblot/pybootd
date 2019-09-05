@@ -404,25 +404,28 @@ class TftpServer:
     Each request is handled in its own thread
     """
 
+    TFTP_SECTION = 'tftpd'
+
     def __init__(self, logger, config, bootpd=None):
         self.log = logger
         self.config = config
         self.sock = []
         self.bootpd = bootpd
-        self.blocksize = int(self.config.get('tftp', 'blocksize', '512'))
-        self.timeout = float(self.config.get('tftp', 'timeout', '2.0'))
-        self.retry = int(self.config.get('tftp', 'blocksize', '5'))
-        self.root = self.config.get('tftp', 'root', os.getcwd())
+        self.blocksize = int(self.config.get(self.TFTP_SECTION, 'blocksize',
+                                             '512'))
+        self.timeout = float(self.config.get(self.TFTP_SECTION, 'timeout', '2.0'))
+        self.retry = int(self.config.get(self.TFTP_SECTION, 'blocksize', '5'))
+        self.root = self.config.get(self.TFTP_SECTION, 'root', os.getcwd())
         self.fcre, self.filepatterns = self.get_file_filters()
         self.genfilecre = recompile(r'\[(?P<name>[\w\.\-]+)\]')
 
     def bind(self):
         netconfig = self.bootpd and self.bootpd.get_netconfig()
-        host = self.config.get('tftp', 'address',
+        host = self.config.get(self.TFTP_SECTION, 'address',
                                netconfig and netconfig['server'])
         if not host:
             raise TftpError(TftpError.NO_SUCH_USER, 'TFTP address no defined')
-        port = int(self.config.get('tftp', 'port', str(TFTP_PORT)))
+        port = int(self.config.get(self.TFTP_SECTION, 'port', str(TFTP_PORT)))
         sock = socket(AF_INET, SOCK_DGRAM)
         self.sock.append(sock)
         sock.bind((host, port))
@@ -433,7 +436,7 @@ class TftpServer:
                 if not self.bootpd.is_alive():
                     self.log.info('Bootp daemon is dead, exiting')
                     break
-            r, w, e = select(self.sock, [], self.sock)
+            r = select(self.sock, [], self.sock)[0]
             for sock in r:
                 data, addr = sock.recvfrom(516)
                 tc = TftpConnection(self)

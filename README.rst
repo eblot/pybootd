@@ -21,17 +21,15 @@ Requirements
 Python
 ------
 
-- Python_ 2.7 or above is required. Python_ 3.x is not yet supported.
-- Six_ compatibility module
+- Python_ 3.5+ or above is required. Python_ 2.x is not longer supported.
 - Netifaces_ Python module is required on OS X; on Linux only, iproute2_ can be
   used as an alternative
-- Optional: python-pkg-resources_ Python module
+- Optional: python_pkg_resources_ Python module
 
 .. _Python: http://python.org/
 .. _Netifaces: http://alastairs-place.net/netifaces/
 .. _iproute2: http://www.linuxfoundation.org/collaborate/workgroups/networking/iproute2
-.. _python-pkg-resources: http://pythonhosted.org/distribute/pkg_resources.html
-.. _Six: http://pythonhosted.org/six
+.. _python_pkg_resources: http://pythonhosted.org/distribute/pkg_resources.html
 
 Permissions
 -----------
@@ -81,7 +79,7 @@ Common errors
 ``pybootd.pxed.BootpError: Unable to detect network configuration``
   This error is often triggered when the ``pool_start`` address is not
   part of a valid network. Double check the network configuration and
-  fix up the ``[bootp]`` section so that it matches the actual
+  fix up the ``[bootpd]`` section so that it matches the actual
   network. If you don't want to allocate addresses dynamically from
   the pool (with ``pool_count = 0``), you still need to specify
   ``pool_start`` to some address in the local network you want to
@@ -95,8 +93,8 @@ Common errors
 Configuration
 -------------
 
-``pybootd`` has a few option switches. The server offers two services: bootp
-(which supports Dhcp and PXE extensions) and tftp. It is possible to disable
+``pybootd`` has a few option switches. The server offers two services: *bootpd*
+(which supports DHCP and PXE extensions) and *tftpd*. It is possible to disable
 either services.
 
 Usage: pybootd.py [options]
@@ -145,8 +143,8 @@ client requests at least an IP address twice:
 ``file``
    The path to the output log file, if ``type`` is set to ``file``.
 
-``[bootp]`` section
-...................
+``[bootpd]`` section
+....................
 
 ``access``
    Type of access control list. If this option is not defined, all BOOTP
@@ -228,36 +226,40 @@ client requests at least an IP address twice:
 ``servername``
    Name of the BOOTP server.
 
+
 ``[mac]`` section
 .................
 
-   The ``[mac]`` section contains one entry for each MAC address to allow or
-   block. The value for each entry is a boolean, *i.e.*::
+The ``[mac]`` section contains one entry for each MAC address to allow or
+block. The value for each entry is a boolean, *i.e.*::
 
-     AA-BB-CC-DD-EE-FF = enable
+  ``AA-BB-CC-DD-EE-FF = enable``
 
-  Note that due to a limitation of the configuration parser, ':' byte separator
-  in MAC addresses is not allowed, please use '-' separator.
+Note that due to a limitation of the configuration parser, ':' byte separator
+in MAC addresses is not allowed, please use '-' separator.
+
 
 ``[static_dhcp]`` section
 .........................
 
-   The ``[static_dhcp]`` section contains one entry for each MAC
-   address to associate with a specific IP address. The IP address can be
-   any IPv4 address in dotted notation, *i.e.*:
+The ``[static_dhcp]`` section contains one entry for each MAC
+address to associate with a specific IP address. The IP address can be
+any IPv4 address in dotted notation, *i.e.*:
 
-     AA-BB-CC-DD-EE-FF = 192.168.1.2
+  ``AA-BB-CC-DD-EE-FF = 192.168.1.2``
 
-   The MAC addresses specified here will automatically be allowed,
-   unless ``[mac]`` section specifies otherwise.
+The MAC addresses specified here will automatically be allowed,
+unless ``[mac]`` section specifies otherwise.
+
 
 ``[uuid]`` section
 ..................
 
-   The ``[uuid]`` section contains one entry for each UUID to allow or block.
-   The value for each entry is a boolean, *i.e.*::
+The ``[uuid]`` section contains one entry for each UUID to allow or block.
+The value for each entry is a boolean, *i.e.*::
 
-     xxxxxxxx-aaaa-bbbb-cccc-yyyyyyyyyyyy = enable
+  ``xxxxxxxx-aaaa-bbbb-cccc-yyyyyyyyyyyy = enable``
+
 
 ``[http]`` section
 ..................
@@ -281,8 +283,9 @@ The ``pxe``/``dhcp`` option pair enables the remote HTTP server to identify
 the boot phase: either a BIOS initialization or an OS boot sequence. When such
 differentiation is useless, both options may refer to the same path.
 
-``[tftp]`` section
-..................
+
+``[tftpd]`` section
+...................
 
 ``address``
    Address to listen to incoming TFTP requests. When the BOOTP daemon is
@@ -310,11 +313,12 @@ differentiation is useless, both options may refer to the same path.
    - an absolute path, when the ``root`` option starts with ``/``,
    - a URL prefix, to access remote files.
 
+
 ``[filters]`` section
 .....................
 
 The ``filters`` section allows on-the-fly pathnames transformation. When a TFTP
-client requests some specific filenames, the *tftp* server can translate them
+client requests some specific filenames, the *tftpd* server can translate them
 to other ones.
 
 This option is useful to serve the very same configuration file (''e.g.''
@@ -332,8 +336,8 @@ braces, such as ``{varname}``.
 For now, the only supported variable is ``filename``, which is replaced with
 the actual requested filename.
 
-The *value* part can also contain a special marker, that tells the *tftp*
-daemon to read the replacement pattern from a file. This special marker should
+The *value* part can also contain a special marker, that tells the *tftpd*
+server to read the replacement pattern from a file. This special marker should
 be written with enclosing brackets, such as ``[file]``.
 
 Examples
@@ -343,7 +347,7 @@ The following filter::
 
   pxelinux.cfg/* = pybootd/etc/pxe.cfg
 
-tells the *tftp* server that all client requests matching the
+tells the *tftpd* server that all client requests matching the
 ``pxelinux.cfg/*`` pattern should be served the ``pybootd/etc/pxe.cfg`` file
 instead. This prevents the client to perform the usual time-costing fallback
 requests using UUID, MAC, and suffix addresses before eventually falling
@@ -353,7 +357,7 @@ The following filter::
 
   startup = [dir/{filename}.cfg]
 
-tells the *tftp* server that when the ``startup`` file is requested, it should
+tells the *tftpd* server that when the ``startup`` file is requested, it should
 read out the actual filename from the ``dir/startup.cfg`` file.
 
 HTTP-based authentication
@@ -382,15 +386,16 @@ this feature. It can be found within the ``tests/`` subdirectory. See the
 ``config.ini`` file for this test daemon. The test daemon expects the ``pxe``
 path to be set to ``/boot`` and the ``dhcp`` path to ``/linux``.
 
+
 Sample configurations
 ~~~~~~~~~~~~~~~~~~~~~
 
 Installing a Debian 6.0 machine from the official archive
 ---------------------------------------------------------
-As the *tftp* daemon is able to retrieve remote files using the HTTP protocol,
-there is no need to manually download any file from a Debian mirror. The daemon
-will forward all file requests to the mirror on behalf of the client being
-installed.
+As pybootd's *tftpd* server is able to retrieve remote files using the HTTP
+protocol, there is no need to manually download any file from a Debian mirror.
+The daemon will forward all file requests to the mirror on behalf of the client
+being installed.
 
 The ``pybootd.ini`` would contain::
 
@@ -400,7 +405,7 @@ The ``pybootd.ini`` would contain::
   ; show informative and error messages only (disable verbose mode)
   level = info
 
-  [bootp]
+  [bootpd]
   ; do not force a full PXE boot-up cycle to accept the client
   allow_simple_dhcp = enable
   ; First BOOTP/DHCP address to generate
@@ -410,7 +415,7 @@ The ``pybootd.ini`` would contain::
   ; boot-up executable the client should request through TFTP
   boot_file = pxelinux.0
 
-  [tftp]
+  [tftpd]
   ; URL to install a Debian 6.0 Intel/AMD 64-bit network installation
   root = http://http.us.debian.org/debian/dists/squeeze/main/installer-amd64/current/images/netboot
 
