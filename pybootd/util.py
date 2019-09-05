@@ -26,15 +26,14 @@ from re import match
 from socket import inet_aton, inet_ntoa
 from subprocess import run
 from struct import pack as spack, unpack as sunpack
-from sys import stderr
+from sys import platform, stderr
 
 try:
-    import netifaces
+    import netifaces as nif
 except ImportError:
-    import os
-    if os.uname()[0].lower() == 'darwin':
+    if platform == 'darwin':
         raise ImportError('netifaces package is not installed')
-    netifaces = None
+    nif = None
 
 
 # String values evaluated as true boolean values
@@ -188,11 +187,11 @@ def inttoip(ipval):
 
 def _netifaces_get_iface_config(address):
     pool = iptoint(address)
-    for iface in netifaces.interfaces():
-        ifinfo = netifaces.ifaddresses(iface)
-        if netifaces.AF_INET not in ifinfo:
+    for iface in nif.interfaces():
+        ifinfo = nif.ifaddresses(iface)
+        if nif.AF_INET not in ifinfo:
             continue
-        for inetinfo in netifaces.ifaddresses(iface)[netifaces.AF_INET]:
+        for inetinfo in nif.ifaddresses(iface)[nif.AF_INET]:
             addr_s = inetinfo.get('addr')
             netmask_s = inetinfo.get('netmask')
             if addr_s is None or netmask_s is None:
@@ -242,9 +241,8 @@ def _iproute_get_iface_config(address):
 def get_iface_config(address):
     if not address:
         return None
-    if not netifaces:
-        return _iproute_get_iface_config(address)
-    return _netifaces_get_iface_config(address)
+    nifcfg = _netifaces_get_iface_config if nif else _iproute_get_iface_config
+    return nifcfg(address)
 
 
 class EasyConfigParser(SafeConfigParser):
