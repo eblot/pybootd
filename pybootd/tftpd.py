@@ -42,6 +42,15 @@ TFTP_PORT = 69
 
 
 class TftpError(RuntimeError):
+    (NOT_DEF,
+     FILE_NOT_FOUND,
+     ACCESS_ERROR,
+     ALLOC_EXCEED,
+     ILLEGAL,
+     UNKNOWN_ID,
+     ALREADY_EXIST,
+     NO_SUCH_USER) = range(8)
+
     """Any TFTP error"""
     def __init__(self, code, msg):
         super(TftpError, self).__init__(msg)
@@ -55,6 +64,7 @@ class TftpConnection(object):
     ACK = 4
     ERR = 5
     OACK = 6
+
     HDRSIZE = 4  # number of bytes for OPCODE and BLOCK in header
 
     def __init__(self, server, port=0):
@@ -103,7 +113,7 @@ class TftpConnection(object):
                 if addr == client_addr:
                     break
         else:
-            raise TftpError(4, 'Transfer timed out')
+            raise TftpError(TftpError.ALLOC_EXCEED, 'Transfer timed out')
         # end while
         return self.parse(data)
 
@@ -179,7 +189,7 @@ class TftpConnection(object):
             errnum = pkt['errnum'] = unpack('!h', buf[2:4])[0]
             errtxt = pkt['errtxt'] = buf[4:-1]
         else:
-            raise TftpError(4, 'Unknown packet type')
+            raise TftpError(TftpError.ILLEGAL, 'Unknown packet type')
         return pkt
 
     def retransmit(self):
@@ -200,7 +210,7 @@ class TftpConnection(object):
             pkt = self.parse(data)
             opcode = pkt['opcode']
             if opcode not in (RRQ, WRQ):
-                raise TftpError(4, 'Bad request')
+                raise TftpError(TftpError.ILLEGAL, 'Bad request')
 
             # Start lock-step transfer
             self.active = 1
@@ -221,7 +231,7 @@ class TftpConnection(object):
                 elif opcode == ERR:
                     self.recv_err(pkt)
                 else:
-                    raise TftpError(5, 'Invalid opcode')
+                    raise TftpError(TftpError.ILLEGAL, 'Invalid opcode')
             self.log.debug('End of active: %s:%s' % addr)
         except TftpError as exc:
             self.send_error(exc.code, str(exc))
@@ -321,7 +331,8 @@ class TftpConnection(object):
                         filesize = os.stat(resource)[6]
                 except Exception:
                     self.active = False
-                    self.send_error(1, 'Cannot access resource')
+                    self.send_error(TftpError.FILE_NOT_FOUND,
+                                    'Cannot access resource')
                     self.log.warn('Cannot stat resource %s' % resource)
                     return
             self.log.info('Send size request file %s size: %d' %
@@ -343,7 +354,8 @@ class TftpConnection(object):
                     self.log.info("Sending file '%s'" % resource)
                     self.file = open(resource, 'rb')
             except Exception as exc:
-                self.send_error(1, 'Cannot open resource')
+                self.send_error(TftpError.FILE_NOT_FOUND,
+                                'Cannot open resource')
                 self.log.warn('Cannot open file for reading %s: %s' %
                               (resource, exc))
                 return
@@ -361,7 +373,7 @@ class TftpConnection(object):
             self.log.info('Receiving file: %s' % resource)
             self.file = open(resource, 'wb')
         except:
-            self.send_error(1, 'Cannot open file')
+            self.send_error(TftpError.FILE_NOT_FOUND, 'Cannot open file')
             self.log.error('Cannot open file for writing %s: %s' %
                            exc_info()[:2])
             return
@@ -409,7 +421,7 @@ class TftpServer:
         host = self.config.get('tftp', 'address',
                                netconfig and netconfig['server'])
         if not host:
-            raise TftpError('TFTP address no defined')
+            raise TftpError(TftpError.NO_SUCH_USER, 'TFTP address no defined')
         port = int(self.config.get('tftp', 'port', str(TFTP_PORT)))
         sock = socket(AF_INET, SOCK_DGRAM)
         self.sock.append(sock)
@@ -438,7 +450,8 @@ class TftpServer:
                 continue
             filepattern = self.filepatterns[group]
             return resub(r'\{(\w+)\}', connexion._dynreplace, filepattern)
-        raise TftpError('Internal error, file matching pattern issue')
+        raise TftpError(TftpError.NOT_DEF,
+                        'Internal error, file matching pattern issue')
 
     def get_file_filters(self):
         patterns = []
