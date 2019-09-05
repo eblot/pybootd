@@ -97,15 +97,16 @@ Configuration
 (which supports DHCP and PXE extensions) and *tftpd*. It is possible to disable
 either services.
 
-Usage: pybootd.py [options]
-   PXE boot up server, a tiny BOOTP/DHCP/TFTP server
+Usage: pybootd.py [-h] [-c CONFIG] [-p] [-t] [-d]
+   Tiny BOOTP/DHCP/TFTP/PXE server
 
 Options:
   -h, --help            show this help message and exit
-  -c CONFIG, --config=CONFIG
+  -c CONFIG, --config CONFIG
                         configuration file
   -p, --pxe             enable BOOTP/DHCP/PXE server only
   -t, --tftp            enable TFTP server only
+  -d, --debug           enable debug mode
 
 ``pybootd`` daemon uses a configuration file, in ``.ini`` format, for all other
 options.
@@ -233,7 +234,7 @@ client requests at least an IP address twice:
 The ``[mac]`` section contains one entry for each MAC address to allow or
 block. The value for each entry is a boolean, *i.e.*::
 
-  ``AA-BB-CC-DD-EE-FF = enable``
+  AA-BB-CC-DD-EE-FF = enable
 
 Note that due to a limitation of the configuration parser, ':' byte separator
 in MAC addresses is not allowed, please use '-' separator.
@@ -246,7 +247,7 @@ The ``[static_dhcp]`` section contains one entry for each MAC
 address to associate with a specific IP address. The IP address can be
 any IPv4 address in dotted notation, *i.e.*:
 
-  ``AA-BB-CC-DD-EE-FF = 192.168.1.2``
+  AA-BB-CC-DD-EE-FF = 192.168.1.2
 
 The MAC addresses specified here will automatically be allowed,
 unless ``[mac]`` section specifies otherwise.
@@ -258,7 +259,7 @@ unless ``[mac]`` section specifies otherwise.
 The ``[uuid]`` section contains one entry for each UUID to allow or block.
 The value for each entry is a boolean, *i.e.*::
 
-  ``xxxxxxxx-aaaa-bbbb-cccc-yyyyyyyyyyyy = enable``
+  xxxxxxxx-aaaa-bbbb-cccc-yyyyyyyyyyyy = enable
 
 
 ``[http]`` section
