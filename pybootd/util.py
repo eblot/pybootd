@@ -135,8 +135,7 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
         hdlr = FileHandler(logfile)
     elif logtype in ('winlog', 'eventlog', 'nteventlog'):
         # Requires win32 extensions
-        hdlr = NTEventLogHandler(logid,
-                                                  logtype='Application')
+        hdlr = NTEventLogHandler(logid, logtype='Application')
     elif logtype in ('syslog', 'unix'):
         hdlr = SysLogHandler('/dev/log')
     elif logtype in ('stderr'):
@@ -165,15 +164,6 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
     formatter = Formatter(format, datefmt)
     hdlr.setFormatter(formatter)
     logger.addHandler(hdlr)
-
-    def logerror(record):
-        import traceback
-        print(record.msg)
-        print(record.args)
-        traceback.print_exc()
-    # uncomment the following line to show logger formatting error
-    #hdlr.handleError = logerror
-
     return logger
 
 

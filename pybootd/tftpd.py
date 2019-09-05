@@ -27,21 +27,25 @@ from struct import pack as spack, unpack as sunpack
 from sys import argv, exc_info
 from threading import Thread
 from time import time as now
-from traceback import print_exc
-from urllib.parse import urlparse
+from traceback import format_exc
+from urllib.parse import urlparse, urlsplit
 from urllib.request import urlopen
 from . import pybootd_path
 from .util import hexline
 
-#pybootd: disable-msg=broad-except
+#pylint: disable-msg=broad-except
+#pylint: disable-msg=invalid-name
+#pylint: disable-msg=missing-docstring
 
 
 TFTP_PORT = 69
 
 
-class TftpError(AssertionError):
+class TftpError(RuntimeError):
     """Any TFTP error"""
-    pass
+    def __init__(self, code, msg):
+        super(TftpError, self).__init__(msg)
+        self.code = code
 
 
 class TftpConnection(object):
@@ -71,7 +75,7 @@ class TftpConnection(object):
 
     def _bind(self, host='', port=TFTP_PORT):
         self.log.debug('bind %s:%d' % (host, port))
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = socket(AF_INET, SOCK_DGRAM)
         if host or port:
             self.sock.bind((host, port))
 
@@ -87,7 +91,7 @@ class TftpConnection(object):
         timeout = self.timeout
         retry = self.server.retry
         while retry:
-            r, w, e = select([fno], [], [fno], timeout)
+            r = select([fno], [], [fno], timeout)[0]
             if not r:
                 # We timed out -- retransmit
                 retry = retry - 1
@@ -128,8 +132,9 @@ class TftpConnection(object):
         pkt = {}
         opcode = pkt['opcode'] = unpack('!h', buf[:2])[0]
         if (opcode == self.RRQ) or (opcode == self.WRQ):
-            resource, mode, options = data[2:].split('\000', 2)
-            resource = self.server.fcre.sub(self._filter_file, resource)
+            resource, mode, options = data[2:].split(b'\x00', 2)
+            resource = self.server.fcre.sub(self._filter_file,
+                                            resource.decode())
             if self.server.root and self.is_url(self.server.root):
                 resource = '%s/%s' % (self.server.root, resource)
             else:
@@ -159,7 +164,7 @@ class TftpConnection(object):
             pkt['filename'] = resource
             pkt['mode'] = mode
             while options:
-                key, value, options = options.split('\000', 2)
+                key, value, options = options.split(b'\x00', 2)
                 if key == 'blksize':
                     self.blocksize = int(value)
                 elif key == 'timeout':
@@ -219,9 +224,9 @@ class TftpConnection(object):
                     raise TftpError(5, 'Invalid opcode')
             self.log.debug('End of active: %s:%s' % addr)
         except TftpError as exc:
-            self.send_error(exc[0], exc[1])
-        except:
-            self.log.error(format_exc())
+            self.send_error(exc.code, str(exc))
+        except Exception:
+            self.log.error(format_exc(chain=False))
         self.log.debug('Ending connection %s:%s' % addr)
 
     def recv_ack(self, pkt):
@@ -270,8 +275,9 @@ class TftpConnection(object):
             except AttributeError:
                 # StringIO does not have a 'name' attribute
                 pass
-            except Exception:
-                print_exc()
+            except Exception as exc:
+                self.log.error('Error: %s' % exc)
+                self.log.warn('%s', format_exc(chain=False))
 
     def send_ack(self, pack=spack):
         self.log.debug('send_ack')
@@ -283,7 +289,7 @@ class TftpConnection(object):
 
     def send_error(self, errnum, errtext, pack=spack):
         self.log.debug('send_error')
-        errtext = errtext + '\000'
+        errtext = errtext.encode() + b'\x00'
         fmt = '!hh%ds' % len(errtext)
         outdata = pack(fmt, self.ERR, errnum, errtext)
         self.sock.sendto(outdata, self.client_addr)
@@ -292,7 +298,7 @@ class TftpConnection(object):
         self.log.debug('send_oack')
         pkt = pack('!h', self.OACK)
         for k, v in options:
-            pkt += k + '\x00' + v + '\x00'
+            pkt += k.encode() + b'\x00' + v.encode() + b'\x00'
         self.send(pkt)
         # clear out the last packet buffer to prevent from retransmitting it
         self.lastpkt = ''
@@ -336,10 +342,10 @@ class TftpConnection(object):
                     resource = os.path.realpath(resource)
                     self.log.info("Sending file '%s'" % resource)
                     self.file = open(resource, 'rb')
-            except Exception:
+            except Exception as exc:
                 self.send_error(1, 'Cannot open resource')
                 self.log.warn('Cannot open file for reading %s: %s' %
-                              exc_info()[:2])
+                              (resource, exc))
                 return
         if 'tsize' not in pkt:
             self.send_data(self.file.read(self.blocksize))
@@ -377,7 +383,7 @@ class TftpConnection(object):
 
     @staticmethod
     def is_url(path):
-        return bool(urlparse.urlsplit(path).scheme)
+        return bool(urlsplit(path).scheme)
 
 
 class TftpServer:
@@ -419,7 +425,7 @@ class TftpServer:
             for sock in r:
                 data, addr = sock.recvfrom(516)
                 tc = TftpConnection(self)
-                thread = Thread(tc.connect, (addr, data))
+                thread = Thread(target=tc.connect, args=(addr, data))
                 thread.start()
 
     def filter_file(self, connexion, mo):

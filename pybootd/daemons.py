@@ -24,6 +24,8 @@
 from os.path import isfile
 from threading import Thread
 from sys import exit as sysexit, modules, stderr
+from traceback import format_exc
+
 from . import pybootd_path, __version__
 from .pxed import BootpServer
 from .tftpd import TftpServer
@@ -110,11 +112,11 @@ def main():
                 daemon.join(0.5)
                 if not daemon.is_alive():
                     break
-    except Exception as e:
-        print('\nError: %s' % e, file=stderr)
+    except Exception as exc:
+        print('\nError: %s' % exc, file=stderr)
         if debug:
-            import traceback
-            print(traceback.format_exc(), file=stderr)
+            print(format_exc(chain=False), file=stderr)
         sysexit(1)
     except KeyboardInterrupt:
-        print("Aborting...")
+        print("\nAborting...")
+        sysexit(2)

@@ -31,7 +31,14 @@ from urllib.parse import urlencode, urlunsplit
 from urllib.request import urlopen
 from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 
-#pybootd: disable-msg=broad-except
+#pylint: disable-msg=broad-except
+#pylint: disable-msg=invalid-name
+#pylint: disable-msg=missing-docstring
+#pylint: disable-msg=too-many-return-statements
+#pylint: disable-msg=too-many-branches
+#pylint: disable-msg=too-many-locals
+#pylint: disable-msg=too-many-statements
+#pylint: disable-msg=too-many-nested-blocks
 
 
 BOOTP_PORT_REQUEST = 67
@@ -263,7 +270,7 @@ class BootpServer:
     def forever(self):
         while True:
             try:
-                r, w, e = select(self.sock, [], self.sock)
+                r = select(self.sock, [], self.sock)[0]
                 for sock in r:
                     data, addr = sock.recvfrom(556)
                     self.handle(sock, addr, data)
@@ -315,7 +322,7 @@ class BootpServer:
             vendor += spack('!BBB%ds' % len(prompt), PXE_MENU_PROMPT,
                             1+len(prompt), len(prompt), prompt)
             buf += spack('!BB%ds' % len(vendor), 43,
-                          len(vendor), vendor)
+                         len(vendor), vendor)
             buf += spack('!BBB', 255, 0, 0)
             return buf
         except KeyError as exc:
@@ -389,12 +396,12 @@ class BootpServer:
 
         # if the state has not evolved from idle, there is nothing to do
         if newstate == self.ST_IDLE:
-            self.log.info('Request from %s ignored (idle state)' % mac_str)
             sdhcp = 'allow_simple_dhcp'
             simple_dhcp = \
                 self.config.has_option(self.bootp_section, sdhcp) and \
                 to_bool(self.config.get(self.bootp_section, sdhcp))
             if not simple_dhcp:
+                self.log.info('Request from %s ignored (idle state)' % mac_str)
                 return
             if not dhcp_msg_type:
                 # Legacy DHCP: assuming discover by default
@@ -469,9 +476,9 @@ class BootpServer:
         # construct reply
         buf[BOOTP_HOPS] = 0
         buf[BOOTP_OP] = BOOTREPLY
-        self.log.info('Client IP: %s' % inet_ntoa(buf[7]))
-        if buf[BOOTP_CIADDR] == '\x00\x00\x00\x00':
-            self.log.debug('Client needs its address')
+        ciaddr = buf[BOOTP_CIADDR]
+        if not sunpack('!I', ciaddr)[0]:
+            self.log.info('Client needs its address')
             ipaddr = iptoint(self.pool_start)
             ip = None
             if mac_str in self.ippool:
@@ -479,7 +486,7 @@ class BootpServer:
                 self.log.info('Lease for MAC %s already defined as IP %s' %
                               (mac_str, ip))
             else:
-                for idx in xrange(self.pool_count):
+                for idx in range(self.pool_count):
                     ipkey = inttoip(ipaddr+idx)
                     self.log.debug('Check for IP %s' % ipkey)
                     if ipkey not in self.ippool.values():
@@ -498,13 +505,14 @@ class BootpServer:
             buf[BOOTP_FLAGS] = BOOTP_FLAGS_BROADCAST
 
             relay = buf[BOOTP_GIADDR]
-            if relay != b'\x00\x00\x00\x00':
+            if sunpack('!I', relay)[0]:
                 addr = (inet_ntoa(relay), addr[1])
             else:
                 addr = (inttoip(reply_broadcast), addr[1])
             self.log.info('Reply to: %s:%s' % addr)
         else:
-            buf[BOOTP_YIADDR] = buf[BOOTP_CIADDR]
+            self.log.info('Client IP: %s' % inet_ntoa(ciaddr))
+            buf[BOOTP_YIADDR] = ciaddr
             ip = inet_ntoa(buf[BOOTP_YIADDR])
         buf[BOOTP_SIADDR] = inet_aton(server_addr)
         # sname

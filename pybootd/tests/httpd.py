@@ -88,7 +88,7 @@ if __name__ == "__main__":
     (options, args) = optparser.parse_args(sys.argv[1:])
 
     if not options.config:
-        raise AssertionError('Missing configuration file')
+        raise RuntimeError('Missing configuration file')
 
     cfgparser = EasyConfigParser()
     with open(options.config, 'rt') as config:
