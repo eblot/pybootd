@@ -29,6 +29,8 @@ from .pxed import BootpServer
 from .tftpd import TftpServer
 from .util import logger_factory, EasyConfigParser
 
+#pybootd: disable-msg=broad-except
+
 
 class BootpDaemon(Thread):
 

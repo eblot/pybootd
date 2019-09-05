@@ -33,6 +33,8 @@ from urllib.request import urlopen
 from . import pybootd_path
 from .util import hexline
 
+#pybootd: disable-msg=broad-except
+
 
 TFTP_PORT = 69
 
@@ -122,7 +124,7 @@ class TftpConnection(object):
 
     def parse(self, data, unpack=sunpack):
         self.log.debug('parse')
-        buf = buffer(data)
+        buf = data
         pkt = {}
         opcode = pkt['opcode'] = unpack('!h', buf[:2])[0]
         if (opcode == self.RRQ) or (opcode == self.WRQ):
