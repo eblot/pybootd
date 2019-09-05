@@ -347,12 +347,12 @@ class TftpConnection(object):
         else:
             try:
                 if self.is_url(resource):
-                    self.log.info("Sending resource '%s'" % resource)
                     self.file = urlopen(resource)
+                    self.log.info("Sending resource '%s'" % resource)
                 else:
                     resource = os.path.realpath(resource)
-                    self.log.info("Sending file '%s'" % resource)
                     self.file = open(resource, 'rb')
+                    self.log.info("Sending file '%s'" % resource)
             except Exception as exc:
                 self.send_error(TftpError.FILE_NOT_FOUND,
                                 'Cannot open resource')
