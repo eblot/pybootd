@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-#
 # Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
@@ -17,7 +15,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from configparser import SafeConfigParser, InterpolationSyntaxError
+from configparser import ConfigParser, InterpolationSyntaxError
 from logging import (DEBUG, INFO, ERROR, CRITICAL, WARNING,
                      Formatter, FileHandler, StreamHandler, getLogger)
 from logging.handlers import (BufferingHandler, NTEventLogHandler,
@@ -235,7 +233,15 @@ def get_iface_config(address):
     return nifcfg(address)
 
 
-class EasyConfigParser(SafeConfigParser):
+def is_quoted(str_):
+    """Tells whether a string is enclosed in simple- or double- quoted
+       markers"""
+    str_ = str_.strip()
+    return (str_.startswith('"') and str_.endswith('"')) or \
+           (str_.startswith("'") and str_.endswith("'"))
+
+
+class EasyConfigParser(ConfigParser):
     """ConfigParser extension to support default config values and do not
        mess with multi-line option strings"""
 
@@ -251,8 +257,8 @@ class EasyConfigParser(SafeConfigParser):
             return default
         if not self.has_option(section, option):
             return default
-        return SafeConfigParser.get(self, section, option, raw=raw, vars=vars,
-                                    fallback=fallback)
+        return ConfigParser.get(self, section, option, raw=raw, vars=vars,
+                                fallback=fallback)
 
     def write(self, filep):
         """Write an .ini-format representation of the configuration state,
@@ -274,5 +280,4 @@ class EasyConfigParser(SafeConfigParser):
         if is_quoted(rawval):
             return rawval
         # cannot use 'super' here as ConfigParser is outdated
-        return SafeConfigParser._interpolate(self, section, option,
-                                             rawval, vars)
+        return ConfigParser._interpolate(self, section, option, rawval, vars)

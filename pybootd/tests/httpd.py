@@ -1,7 +1,6 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 #
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -18,14 +17,22 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-import sys
-import urlparse
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-from optparse import OptionParser
-from util import logger_factory, to_bool, to_int, EasyConfigParser
+"""HTTPd tiny server to exercise the pybootd daemon"""
+
+from argparse import ArgumentParser, FileType
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from sys import exit as sysexit, modules, stderr
+from traceback import format_exc
+from urllib.parse import parse_qs, urlsplit
+from pybootd.util import logger_factory, to_bool, to_int, EasyConfigParser
 
 
-class HttpdDaemon(HTTPServer):
+#pylint: disable-msg=broad-except
+#pylint: disable-msg=missing-docstring
+#pylint: disable-msg=invalid-name
+
+
+class HttpdTestDaemon(HTTPServer):
 
     class ReqHandler(BaseHTTPRequestHandler):
 
@@ -33,8 +40,9 @@ class HttpdDaemon(HTTPServer):
             log = self.server.log
             log.debug("GET from %s:%d" % self.client_address)
             log.debug("Request: %s" % self.path)
-            urlparts = urlparse.urlsplit(self.path)
-            query = urlparse.parse_qs(urlparts.query)
+            urlparts = urlsplit(self.path)
+            query = parse_qs(urlparts.query)
+            uuid = ''
             if urlparts.path in ('/boot', '/linux'):
                 if 'uuid' in query:
                     uuids = query['uuid']
@@ -79,30 +87,39 @@ class HttpdDaemon(HTTPServer):
         self.serve_forever()
 
 
-if __name__ == "__main__":
-    usage = 'Usage: %prog [options]\n' \
-            '   HTTPd tiny server to exercise the pybootd daemon'
-    optparser = OptionParser(usage=usage)
-    optparser.add_option('-c', '--config', dest='config',
-                         help='configuration file')
-    (options, args) = optparser.parse_args(sys.argv[1:])
-
-    if not options.config:
-        raise RuntimeError('Missing configuration file')
-
-    cfgparser = EasyConfigParser()
-    with open(options.config, 'rt') as config:
-        cfgparser.readfp(config)
-
-    logger = logger_factory(logtype=cfgparser.get('logger', 'type', 'stderr'),
-                            logfile=cfgparser.get('logger', 'file'),
-                            level=cfgparser.get('logger', 'level', 'info'))
-
+def main():
+    debug = False
     try:
-        bt = HttpdDaemon(logger, cfgparser)
+        argparser = ArgumentParser(description=modules[__name__].__doc__)
+        argparser.add_argument('-c', '--config', dest='config', required=True,
+                               type=FileType('rt'),
+                               help='configuration file')
+        argparser.add_argument('-d', '--debug', action='store_true',
+                               help='enable debug mode')
+        args = argparser.parse_args()
+
+        cfgparser = EasyConfigParser()
+        cfgparser.read_file(args.config)
+
+        logger = logger_factory(logtype=cfgparser.get('logger', 'type',
+                                                      'stderr'),
+                                logfile=cfgparser.get('logger', 'file'),
+                                level=cfgparser.get('logger', 'level', 'info'))
+
+        bt = HttpdTestDaemon(logger, cfgparser)
         bt.start()
         while True:
             import time
             time.sleep(5)
+    except Exception as exc:
+        print('\nError: %s' % exc, file=stderr)
+        if debug:
+            print(format_exc(chain=False), file=stderr)
+        sysexit(1)
     except KeyboardInterrupt:
-        print "Aborting..."
+        print("\nAborting...", file=stderr)
+        sysexit(2)
+
+
+if __name__ == '__main__':
+    main()
