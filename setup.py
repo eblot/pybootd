@@ -17,16 +17,17 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-import os
 from distutils.core import setup
+from os.path import dirname, join as joinpath
+from sys import platform
 
 
 def _read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(joinpath(dirname(__file__), fname)).read()
 
 
 requirements = []
-if os.uname()[0].lower() == 'darwin':
+if platform == 'darwin':
     requirements.append('netifaces (>= 0.5)')
 
 
