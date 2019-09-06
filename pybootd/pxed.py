@@ -609,7 +609,6 @@ class BootpServer:
                            int(self.config.get(self.BOOTP_SECTION,
                                                'lease_time',
                                                str(24*3600))))
-        pkt += spack('!BB', DHCP_END, 0)
 
         # do not attempt to produce a PXE-augmented response for
         # regular DHCP requests
@@ -620,12 +619,15 @@ class BootpServer:
         else:
             extra_buf = self.build_dhcp_options(hostname)
 
+        pkt += extra_buf
+        pkt += spack('!BB', DHCP_END, 0)
+
         # update the UUID cache
         if pxe:
             self.uuidpool[mac_addr] = uuid
 
         # send the response
-        sock.sendto(pkt + extra_buf, addr)
+        sock.sendto(pkt, addr)
 
         # update the current state
         if currentstate != newstate:
