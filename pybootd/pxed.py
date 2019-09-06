@@ -287,11 +287,16 @@ class BootpServer:
     def parse_options(self, tail):
         self.log.debug('Parsing DHCP options')
         dhcp_tags = {}
+        padding_count = 0
         while tail:
             tag = tail[0]
             # padding
             if tag == 0:
+                padding_count += 1
+                if padding_count > 255:
+                    raise ValueError('Padding overflow')
                 continue
+            padding_count = 0
             if tag == 0xff:
                 return dhcp_tags
             length = tail[1]
