@@ -20,7 +20,7 @@
 from distutils.core import setup
 from os.path import dirname, join as joinpath
 from sys import platform
-
+from pybootd import __version__
 
 def _read(fname):
     return open(joinpath(dirname(__file__), fname)).read()
@@ -33,7 +33,7 @@ if platform == 'darwin':
 
 setup(
     name='pybootd',
-    version='1.6.0',
+    version=__version__,
     description='Simplified BOOTP/DHCP/PXE and TFTP server',
     author='Emmanuel Blot',
     author_email='emmanuel.blot@free.fr',
