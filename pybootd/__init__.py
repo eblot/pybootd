@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -18,33 +16,8 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 import os
-import sys
 
-
-def _get_package_name(default='', version='1.5.0'):
-    try:
-        from pkg_resources import WorkingSet
-    except ImportError:
-        ws = []
-    else:
-        ws = WorkingSet()
-    _path, _ = os.path.split(os.path.dirname(
-        sys.modules['pybootd'].__file__))
-    _path = os.path.normpath(_path)
-    if 'nt' not in os.name:
-        for dist in ws:
-            if os.path.samefile(os.path.normpath(dist.location), _path):
-                return dist.project_name, dist.version
-    else:  # tweak for windows
-        _path = os.path.abspath(_path).lower()
-        for dist in ws:
-            if 'pybootd' in dist.location:
-                if _path == os.path.abspath(dist.location).lower():
-                    return dist.project_name, dist.version
-    return default, version
-
-
-PRODUCT_NAME, __version__ = _get_package_name('pybootd')
+__version__ = '1.7.0'
 
 
 def pybootd_path(path):
@@ -61,9 +34,9 @@ def pybootd_path(path):
         except ImportError:
             raise IOError('pkg_resources module not available')
         try:
-            newpath = resource_filename(Requirement.parse(PRODUCT_NAME), path)
+            newpath = resource_filename(Requirement.parse('pybootd'), path)
             if not newpath:
-                localpath = get_distribution(PRODUCT_NAME).location
+                localpath = get_distribution('pybootd').location
                 newpath = os.path.join(localpath, path)
         except DistributionNotFound:
             newpath = path

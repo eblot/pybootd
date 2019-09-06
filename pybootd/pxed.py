@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -17,16 +15,29 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-import re
-import select
-import socket
-import string
-import struct
-import sys
-import time
 from binascii import hexlify
-from pybootd import PRODUCT_NAME
+from re import compile as recompile
+from select import select
+from socket import (inet_aton, inet_ntoa, socket,
+                    AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET,
+                    SO_BROADCAST, SO_REUSEADDR)
+from struct import calcsize as scalc, pack as spack, unpack as sunpack
+from time import sleep
+from traceback import format_exc
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlunsplit
+from urllib.request import urlopen
 from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
+
+#pylint: disable-msg=broad-except
+#pylint: disable-msg=invalid-name
+#pylint: disable-msg=missing-docstring
+#pylint: disable-msg=too-many-return-statements
+#pylint: disable-msg=too-many-branches
+#pylint: disable-msg=too-many-locals
+#pylint: disable-msg=too-many-statements
+#pylint: disable-msg=too-many-nested-blocks
+
 
 BOOTP_PORT_REQUEST = 67
 BOOTP_PORT_REPLY = 68
@@ -34,10 +45,10 @@ BOOTP_PORT_REPLY = 68
 BOOTREQUEST = 1
 BOOTREPLY = 2
 
-BOOTPFormat = '!4bIHH4s4s4s4s16s64s128s64s'
-BOOTPFormatSize = struct.calcsize(BOOTPFormat)
-DHCPFormat = '!4bIHH4s4s4s4s16s64s128s4s'
-DHCPFormatSize = struct.calcsize(DHCPFormat)
+BOOTPFORMAT = '!4bIHH4s4s4s4s16s64s128s64s'
+BOOTPFORMATSIZE = scalc(BOOTPFORMAT)
+DHCPFORMAT = '!4bIHH4s4s4s4s16s64s128s4s'
+DHCPFORMATSIZE = scalc(DHCPFORMAT)
 
 (BOOTP_OP, BOOTP_HTYPE, BOOTP_HLEN, BOOTP_HOPS, BOOTP_XID, BOOTP_SECS,
  BOOTP_FLAGS, BOOTP_CIADDR, BOOTP_YIADDR, BOOTP_SIADDR, BOOTP_GIADDR,
@@ -46,7 +57,7 @@ DHCPFormatSize = struct.calcsize(DHCPFormat)
 BOOTP_FLAGS_NONE = 0
 BOOTP_FLAGS_BROADCAST = 1<<15
 
-COOKIE='\0x63\0x82\0x53\0x63'
+COOKIE = r'\0x63\0x82\0x53\0x63'
 
 DHCP_OPTIONS = {0: 'Byte padding',
                 1: 'Subnet mask',
@@ -169,6 +180,8 @@ class BootpServer:
     ACCESS_REMOTE = ['http']  # Access modes, remotely retrieved
     (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
+    BOOTP_SECTION = 'bootpd'
+
     def __init__(self, logger, config):
         self.sock = []
         self.log = logger
@@ -177,26 +190,24 @@ class BootpServer:
         self.ippool = {}  # key MAC address string, value assigned IP string
         self.filepool = {}  # key IP string, value pathname
         self.states = {}  # key MAC address string, value client state
-        name_ = PRODUCT_NAME.split('-')
-        name_[0] = 'bootp'
-        self.bootp_section = '_'.join(name_)
-        self.pool_start = self.config.get(self.bootp_section, 'pool_start')
+        self.pool_start = self.config.get(self.BOOTP_SECTION, 'pool_start')
         if not self.pool_start:
             raise BootpError('Missing pool_start definition')
-        self.pool_count = int(self.config.get(self.bootp_section,
+        self.pool_count = int(self.config.get(self.BOOTP_SECTION,
                                               'pool_count', '10'))
 
         self.netconfig = get_iface_config(self.pool_start)
         if not self.netconfig:
-            host = self.config.get(self.bootp_section, 'address', '0.0.0.0')
+            host = self.config.get(self.BOOTP_SECTION, 'address', '0.0.0.0')
             self.netconfig = get_iface_config(host)
         if not self.netconfig:
-            raise BootpError('Unable to detect network configuration')
+            # the available networks on the host may not match the config...
+            raise BootpError('Unable to detect a matching network config')
 
         keys = sorted(self.netconfig.keys())
         self.log.info('Using %s' % ', '.join(map(
             ':'.join, zip(keys, [self.netconfig[k] for k in keys]))))
-        nlist = self.config.get(self.bootp_section, 'notify')
+        nlist = self.config.get(self.BOOTP_SECTION, 'notify')
         self.notify = []
         if nlist:
             try:
@@ -204,9 +215,9 @@ class BootpServer:
                 for n in nlist:
                     n = n.strip().split(':')
                     self.notify.append((n[0], int(n[1])))
-            except Exception, e:
-                raise BootpError('Invalid notification URL: %s' % str(e))
-        access = self.config.get(self.bootp_section, 'access')
+            except Exception as exc:
+                raise BootpError('Invalid notification URL: %s' % exc)
+        access = self.config.get(self.BOOTP_SECTION, 'access')
         if not access:
             self.acl = None
         else:
@@ -235,7 +246,7 @@ class BootpServer:
             msg = ','.join([notice, uuid_str, mac_str, ip])
         else:
             msg = ','.join([notice, mac_str, ip])
-        notify_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        notify_sock = socket(AF_INET, SOCK_DGRAM)
         for n in self.notify:
             self.log.info('Notifying %s with %s' % (n, msg))
             notify_sock.sendto(msg, n)
@@ -244,42 +255,52 @@ class BootpServer:
     def get_netconfig(self):
         return self.netconfig
 
-    def bind(self):
-        host = self.config.get(self.bootp_section, 'address', '0.0.0.0')
-        port = self.config.get(self.bootp_section, 'port',
+    def is_managed_ip(self, address):
+        return address in self.ippool.values()
+
+    def start(self):
+        host = self.config.get(self.BOOTP_SECTION, 'address', '0.0.0.0')
+        port = self.config.get(self.BOOTP_SECTION, 'port',
                                str(BOOTP_PORT_REQUEST))
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                             socket.IPPROTO_UDP)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+        sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.sock.append(sock)
         self.log.info('Listening to %s:%s' % (host, port))
         sock.bind((host, int(port)))
-
-    def forever(self):
-        while True:
+        self._resume = True
+        while self._resume:
             try:
-                r, w, e = select.select(self.sock, [], self.sock)
+                r = select(self.sock, [], self.sock, 0.25)[0]
+                if not r:
+                    continue
                 for sock in r:
                     data, addr = sock.recvfrom(556)
                     self.handle(sock, addr, data)
-            except Exception, e:
-                import traceback
-                self.log.critical('%s\n%s' % (str(e), traceback.format_exc()))
-                time.sleep(1)
+            except Exception as exc:
+                self.log.critical('%s\n%s' % (exc, format_exc()))
+                sleep(1)
+
+    def stop(self):
+        self._resume = False
 
     def parse_options(self, tail):
         self.log.debug('Parsing DHCP options')
         dhcp_tags = {}
+        padding_count = 0
         while tail:
-            tag = ord(tail[0])
+            tag = tail[0]
             # padding
             if tag == 0:
+                padding_count += 1
+                if padding_count > 255:
+                    raise ValueError('Padding overflow')
                 continue
+            padding_count = 0
             if tag == 0xff:
                 return dhcp_tags
-            length = ord(tail[1])
-            (value, ) = struct.unpack('!%ss' % length, tail[2:2+length])
+            length = tail[1]
+            (value, ) = sunpack('!%ss' % length, tail[2:2+length])
             tail = tail[2+length:]
             try:
                 option = DHCP_OPTIONS[tag]
@@ -292,47 +313,45 @@ class BootpServer:
             dhcp_tags[tag] = value
 
     def build_pxe_options(self, options, server):
+        buf = b''
         try:
-            buf = ''
             uuid = options[97]
-            buf += struct.pack('!BB%ds' % len(uuid),
-                               97, len(uuid), uuid)
+            buf += spack('!BB%ds' % len(uuid),
+                         97, len(uuid), uuid)
             clientclass = options[60]
             clientclass = clientclass[:clientclass.find(':')]
-            buf += struct.pack('!BB%ds' % len(clientclass),
-                               60, len(clientclass), clientclass)
+            buf += spack('!BB%ds' % len(clientclass),
+                         60, len(clientclass), clientclass)
             vendor = ''
-            vendor += struct.pack('!BBB', PXE_DISCOVERY_CONTROL, 1, 0x0A)
-            vendor += struct.pack('!BBHB4s', PXE_BOOT_SERVERS, 2+1+4,
-                                  0, 1, server)
+            vendor += spack('!BBB', PXE_DISCOVERY_CONTROL, 1, 0x0A)
+            vendor += spack('!BBHB4s', PXE_BOOT_SERVERS, 2+1+4,
+                            0, 1, server)
             srvstr = 'Python'
-            vendor += struct.pack('!BBHB%ds' % len(srvstr), PXE_BOOT_MENU,
-                                  2+1+len(srvstr), 0, len(srvstr), srvstr)
+            vendor += spack('!BBHB%ds' % len(srvstr), PXE_BOOT_MENU,
+                            2+1+len(srvstr), 0, len(srvstr), srvstr)
             prompt = 'Stupid PXE'
-            vendor += struct.pack('!BBB%ds' % len(prompt), PXE_MENU_PROMPT,
-                                  1+len(prompt), len(prompt), prompt)
-            buf += struct.pack('!BB%ds' % len(vendor), 43,
-                               len(vendor), vendor)
-            buf += struct.pack('!BBB', 255, 0, 0)
+            vendor += spack('!BBB%ds' % len(prompt), PXE_MENU_PROMPT,
+                            1+len(prompt), len(prompt), prompt)
+            buf += spack('!BB%ds' % len(vendor), 43,
+                         len(vendor), vendor)
+            buf += spack('!BBB', 255, 0, 0)
             return buf
-        except KeyError, e:
-            self.log.error('Missing options, cancelling: ' + str(e))
-            return None
+        except KeyError as exc:
+            self.log.error('Missing options, cancelling: %s' % exc)
+            return b''
 
     def build_dhcp_options(self, clientname):
-        buf = ''
         if not clientname:
-            return buf
-        buf += struct.pack('!BB%ds' % len(clientname),
-                           12, len(clientname), clientname)
-        return buf
+            return b''
+        return spack('!BB%ds' % len(clientname),
+                     12, len(clientname), clientname)
 
     def handle(self, sock, addr, data):
         self.log.info('Sender: %s on socket %s' % (addr, sock.getsockname()))
-        if len(data) < DHCPFormatSize:
+        if len(data) < DHCPFORMATSIZE:
             self.log.error('Cannot be a DHCP or BOOTP request - too small!')
-        tail = data[DHCPFormatSize:]
-        buf = list(struct.unpack(DHCPFormat, data[:DHCPFormatSize]))
+        tail = data[DHCPFORMATSIZE:]
+        buf = list(sunpack(DHCPFORMAT, data[:DHCPFORMATSIZE]))
         if buf[BOOTP_OP] != BOOTREQUEST:
             self.log.warn('Not a BOOTREQUEST')
             return
@@ -343,13 +362,13 @@ class BootpServer:
 
         # Extras (DHCP options)
         try:
-            dhcp_msg_type = ord(options[53][0])
+            dhcp_msg_type = options[53][0]
         except KeyError:
             dhcp_msg_type = None
 
         server_addr = self.netconfig['server']
         mac_addr = buf[BOOTP_CHADDR][:6]
-        mac_str = ':'.join(['%02X' % ord(x) for x in mac_addr])
+        mac_str = ':'.join(['%02X' % x for x in mac_addr])
         # is the UUID received (PXE mode)
         if 97 in options and len(options[97]) == 17:
             uuid = options[97][1:]
@@ -360,9 +379,9 @@ class BootpServer:
             uuid = self.uuidpool.get(mac_addr, None)
             pxe = False
             self.log.info('PXE UUID not present in request')
-        uuid_str = uuid and ('%s-%s-%s-%s-%s' % tuple(
-            [hexlify(x) for x in uuid[0:4], uuid[4:6], uuid[6:8],
-             uuid[8:10], uuid[10:16]])).upper()
+        uuid_str = uuid and ('%s-%s-%s-%s-%s' % tuple([hexlify(x)
+            for x in (uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
+            ])).upper()
         if uuid_str:
             self.log.info('UUID is %s for MAC %s' % (uuid_str, mac_str))
 
@@ -388,12 +407,12 @@ class BootpServer:
 
         # if the state has not evolved from idle, there is nothing to do
         if newstate == self.ST_IDLE:
-            self.log.info('Request from %s ignored (idle state)' % mac_str)
             sdhcp = 'allow_simple_dhcp'
             simple_dhcp = \
-                self.config.has_option(self.bootp_section, sdhcp) and \
-                to_bool(self.config.get(self.bootp_section, sdhcp))
+                self.config.has_option(self.BOOTP_SECTION, sdhcp) and \
+                to_bool(self.config.get(self.BOOTP_SECTION, sdhcp))
             if not simple_dhcp:
+                self.log.info('Request from %s ignored (idle state)' % mac_str)
                 return
             if not dhcp_msg_type:
                 # Legacy DHCP: assuming discover by default
@@ -404,8 +423,6 @@ class BootpServer:
             # remote access is always validated on each request
             if self.access in self.ACCESS_REMOTE:
                 # need to query a host to grant or reject access
-                import urlparse
-                import urllib
                 netloc = self.config.get(self.access, 'location')
                 path = self.config.get(self.access, pxe and 'pxe' or 'dhcp')
                 timeout = int(self.config.get(self.access, 'timeout', '5'))
@@ -422,14 +439,12 @@ class BootpServer:
                 if to_bool(always_check):
                     checkhost = True
                 if checkhost:
-                    query = urllib.urlencode(parameters)
+                    query = urlencode(parameters)
                     urlparts = (self.access, netloc, path, query, '')
-                    url = urlparse.urlunsplit(urlparts)
+                    url = urlunsplit(urlparts)
                     self.log.info('Requesting URL: %s' % url)
-                    import urllib2
-                    import httplib
                     try:
-                        up = urllib2.urlopen(url, timeout=timeout)
+                        up = urlopen(url, timeout=timeout)
                         for l in up:
                             try:
                                 # Look for extra definition within the reply
@@ -441,16 +456,12 @@ class BootpServer:
                                     filename = v
                             except ValueError:
                                 pass
-                    except urllib2.HTTPError, e:
-                        self.log.error('HTTP Error: %s' % str(e))
+                    except HTTPError as exc:
+                        self.log.error('HTTP Error: %s' % exc)
                         self.states[mac_str] = self.ST_IDLE
                         return
-                    except urllib2.URLError, e:
-                        self.log.critical('Internal error: %s' % str(e))
-                        self.states[mac_str] = self.ST_IDLE
-                        return
-                    except httplib.HTTPException, e:
-                        self.log.error('Server error: %s' % type(e))
+                    except URLError as exc:
+                        self.log.critical('Internal error: %s' % exc)
                         self.states[mac_str] = self.ST_IDLE
                         return
             # local access is only validated if mac address is not yet known
@@ -476,9 +487,9 @@ class BootpServer:
         # construct reply
         buf[BOOTP_HOPS] = 0
         buf[BOOTP_OP] = BOOTREPLY
-        self.log.info('Client IP: %s' % socket.inet_ntoa(buf[7]))
-        if buf[BOOTP_CIADDR] == '\x00\x00\x00\x00':
-            self.log.debug('Client needs its address')
+        ciaddr = buf[BOOTP_CIADDR]
+        if not sunpack('!I', ciaddr)[0]:
+            self.log.info('Client needs its address')
             ipaddr = iptoint(self.pool_start)
             ip = None
             if mac_str in self.ippool:
@@ -486,7 +497,7 @@ class BootpServer:
                 self.log.info('Lease for MAC %s already defined as IP %s' %
                               (mac_str, ip))
             else:
-                for idx in xrange(self.pool_count):
+                for idx in range(self.pool_count):
                     ipkey = inttoip(ipaddr+idx)
                     self.log.debug('Check for IP %s' % ipkey)
                     if ipkey not in self.ippool.values():
@@ -497,32 +508,33 @@ class BootpServer:
                 raise BootpError('No more IP available in definined pool')
 
             mask = iptoint(self.config.get(
-                self.bootp_section, 'netmask', self.netconfig['mask']))
+                self.BOOTP_SECTION, 'netmask', self.netconfig['mask']))
             reply_broadcast = iptoint(ip) & mask
             reply_broadcast |= (~mask) & ((1 << 32)-1)
-            buf[BOOTP_YIADDR] = socket.inet_aton(ip)
+            buf[BOOTP_YIADDR] = inet_aton(ip)
             buf[BOOTP_SECS] = 0
             buf[BOOTP_FLAGS] = BOOTP_FLAGS_BROADCAST
 
             relay = buf[BOOTP_GIADDR]
-            if relay != b'\x00\x00\x00\x00':
-                addr = (socket.inet_ntoa(relay), addr[1])
+            if sunpack('!I', relay)[0]:
+                addr = (inet_ntoa(relay), addr[1])
             else:
                 addr = (inttoip(reply_broadcast), addr[1])
             self.log.info('Reply to: %s:%s' % addr)
         else:
-            buf[BOOTP_YIADDR] = buf[BOOTP_CIADDR]
-            ip = socket.inet_ntoa(buf[BOOTP_YIADDR])
-        buf[BOOTP_SIADDR] = socket.inet_aton(server_addr)
+            self.log.info('Client IP: %s' % inet_ntoa(ciaddr))
+            buf[BOOTP_YIADDR] = ciaddr
+            ip = inet_ntoa(buf[BOOTP_YIADDR])
+        buf[BOOTP_SIADDR] = inet_aton(server_addr)
         # sname
         buf[BOOTP_SNAME] = \
-            '.'.join([self.config.get(self.bootp_section,
+            '.'.join([self.config.get(self.BOOTP_SECTION,
                                       'servername', 'unknown'),
-                      self.config.get(self.bootp_section,
-                                      'domain', 'localdomain')])
+                      self.config.get(self.BOOTP_SECTION,
+                                      'domain', 'localdomain')]).encode()
         # file
-        buf[BOOTP_FILE] = self.config.get(self.bootp_section,
-                                          'boot_file', '\x00')
+        buf[BOOTP_FILE] = self.config.get(self.BOOTP_SECTION,
+                                          'boot_file', '\x00').encode()
 
         if not dhcp_msg_type:
             self.log.warn('No DHCP message type found, discarding request')
@@ -566,38 +578,37 @@ class BootpServer:
         else:
             self.log.debug('No filename defined for IP %s' % ip)
 
-        pkt = struct.pack(DHCPFormat, *buf)
-        pkt += struct.pack('!BBB', DHCP_MSG, 1, dhcp_reply)
-        server = socket.inet_aton(server_addr)
-        pkt += struct.pack('!BB4s', DHCP_SERVER, 4, server)
+        pkt = spack(DHCPFORMAT, *buf)
+        pkt += spack('!BBB', DHCP_MSG, 1, dhcp_reply)
+        server = inet_aton(server_addr)
+        pkt += spack('!BB4s', DHCP_SERVER, 4, server)
 
-        mask = socket.inet_aton(self.config.get(
-            self.bootp_section, 'netmask', self.netconfig['mask']))
+        mask = inet_aton(self.config.get(
+            self.BOOTP_SECTION, 'netmask', self.netconfig['mask']))
 
-        pkt += struct.pack('!BB4s', DHCP_IP_MASK, 4, mask)
+        pkt += spack('!BB4s', DHCP_IP_MASK, 4, mask)
 
-        gateway_addr = self.config.get(self.bootp_section, 'gateway', '')
+        gateway_addr = self.config.get(self.BOOTP_SECTION, 'gateway', '')
         if gateway_addr:
-            gateway = socket.inet_aton(gateway_addr)
+            gateway = inet_aton(gateway_addr)
         else:
             gateway = server
-        pkt += struct.pack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
+        pkt += spack('!BB4s', DHCP_IP_GATEWAY, 4, gateway)
 
-        dns = self.config.get(self.bootp_section,
+        dns = self.config.get(self.BOOTP_SECTION,
                               'dns', None)
         if dns:
             if dns.lower() == 'auto':
-                dns_list = self.get_dns_servers() or [socket.inet_ntoa(server)]
+                dns_list = self.get_dns_servers() or [inet_ntoa(server)]
             else:
                 dns_list = dns.split(';')
             for dns_str in dns_list:
-                dns_ip = socket.inet_aton(dns_str)
-                pkt += struct.pack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
-        pkt += struct.pack('!BBI', DHCP_LEASE_TIME, 4,
-                           int(self.config.get(self.bootp_section,
+                dns_ip = inet_aton(dns_str)
+                pkt += spack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
+        pkt += spack('!BBI', DHCP_LEASE_TIME, 4,
+                           int(self.config.get(self.BOOTP_SECTION,
                                                'lease_time',
                                                str(24*3600))))
-        pkt += struct.pack('!BB', DHCP_END, 0)
 
         # do not attempt to produce a PXE-augmented response for
         # regular DHCP requests
@@ -608,12 +619,15 @@ class BootpServer:
         else:
             extra_buf = self.build_dhcp_options(hostname)
 
+        pkt += extra_buf
+        pkt += spack('!BB', DHCP_END, 0)
+
         # update the UUID cache
         if pxe:
             self.uuidpool[mac_addr] = uuid
 
         # send the response
-        sock.sendto(pkt + extra_buf, addr)
+        sock.sendto(pkt, addr)
 
         # update the current state
         if currentstate != newstate:
@@ -622,7 +636,7 @@ class BootpServer:
             self.states[mac_str] = newstate
 
     def get_dns_servers(self):
-        nscre = re.compile('nameserver\s+(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\s')
+        nscre = recompile(r'nameserver\s+(\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\s')
         result = []
         try:
             with open('/etc/resolv.conf', 'r') as resolv:
@@ -632,7 +646,7 @@ class BootpServer:
                         dns = mo.group(1)
                         self.log.info('Found nameserver: %s' % dns)
                         result.append(dns)
-        except Exception, e:
+        except Exception:
             pass
         if not result:
             self.log.info('No nameserver found')

@@ -1,7 +1,6 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 #
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -18,22 +17,23 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-import os
 from distutils.core import setup
-
+from os.path import dirname, join as joinpath
+from sys import platform
+from pybootd import __version__
 
 def _read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(joinpath(dirname(__file__), fname)).read()
 
 
-requirements = ['six']
-if os.uname()[0].lower() == 'darwin':
+requirements = []
+if platform == 'darwin':
     requirements.append('netifaces (>= 0.5)')
 
 
 setup(
     name='pybootd',
-    version='1.6.0',
+    version=__version__,
     description='Simplified BOOTP/DHCP/PXE and TFTP server',
     author='Emmanuel Blot',
     author_email='emmanuel.blot@free.fr',
@@ -52,7 +52,7 @@ setup(
             'Lesser General Public License (LGPL)',
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: POSIX',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.5',
         'Topic :: Internet',
         'Topic :: System :: Installation/Setup',
         'Topic :: System :: Networking',

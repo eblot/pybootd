@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -18,29 +16,43 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 import os
-import re
-import select
-import socket
-import string
-import struct
-import sys
-import time
-import thread
-import urllib2
-import urlparse
-from ConfigParser import NoSectionError
-from cStringIO import StringIO
-from pybootd import pybootd_path
-from util import hexline
+from configparser import NoSectionError
+from io import StringIO
+from re import compile as recompile, sub as resub
+from select import select
+from socket import socket, AF_INET, SOCK_DGRAM
+from struct import pack as spack, unpack as sunpack
+from sys import argv, exc_info
+from threading import Thread
+from time import time as now
+from traceback import format_exc
+from urllib.parse import urlparse, urlsplit
+from urllib.request import urlopen
+from . import pybootd_path
+from .util import hexline
 
-__all__ = ['TftpServer']
+#pylint: disable-msg=broad-except
+#pylint: disable-msg=invalid-name
+#pylint: disable-msg=missing-docstring
+
 
 TFTP_PORT = 69
 
 
-class TftpError(AssertionError):
+class TftpError(RuntimeError):
+    (NOT_DEF,
+     FILE_NOT_FOUND,
+     ACCESS_ERROR,
+     ALLOC_EXCEED,
+     ILLEGAL,
+     UNKNOWN_ID,
+     ALREADY_EXIST,
+     NO_SUCH_USER) = range(8)
+
     """Any TFTP error"""
-    pass
+    def __init__(self, code, msg):
+        super(TftpError, self).__init__(msg)
+        self.code = code
 
 
 class TftpConnection(object):
@@ -50,6 +62,7 @@ class TftpConnection(object):
     ACK = 4
     ERR = 5
     OACK = 6
+
     HDRSIZE = 4  # number of bytes for OPCODE and BLOCK in header
 
     def __init__(self, server, port=0):
@@ -70,7 +83,7 @@ class TftpConnection(object):
 
     def _bind(self, host='', port=TFTP_PORT):
         self.log.debug('bind %s:%d' % (host, port))
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = socket(AF_INET, SOCK_DGRAM)
         if host or port:
             self.sock.bind((host, port))
 
@@ -86,7 +99,7 @@ class TftpConnection(object):
         timeout = self.timeout
         retry = self.server.retry
         while retry:
-            r, w, e = select.select([fno], [], [fno], timeout)
+            r = select([fno], [], [fno], timeout)[0]
             if not r:
                 # We timed out -- retransmit
                 retry = retry - 1
@@ -98,7 +111,7 @@ class TftpConnection(object):
                 if addr == client_addr:
                     break
         else:
-            raise TftpError(4, 'Transfer timed out')
+            raise TftpError(TftpError.ALLOC_EXCEED, 'Transfer timed out')
         # end while
         return self.parse(data)
 
@@ -121,14 +134,15 @@ class TftpConnection(object):
         path = self.server.bootpd.get_filename(client_ip)
         return path
 
-    def parse(self, data, unpack=struct.unpack):
+    def parse(self, data, unpack=sunpack):
         self.log.debug('parse')
-        buf = buffer(data)
+        buf = data
         pkt = {}
         opcode = pkt['opcode'] = unpack('!h', buf[:2])[0]
         if (opcode == self.RRQ) or (opcode == self.WRQ):
-            resource, mode, options = string.split(data[2:], '\000', 2)
-            resource = self.server.fcre.sub(self._filter_file, resource)
+            resource, mode, options = data[2:].split(b'\x00', 2)
+            resource = self.server.fcre.sub(self._filter_file,
+                                            resource.decode())
             if self.server.root and self.is_url(self.server.root):
                 resource = '%s/%s' % (self.server.root, resource)
             else:
@@ -138,7 +152,7 @@ class TftpConnection(object):
                     if not self.server.genfilecre.match(resource):
                         if resource.startswith('^%s' % os.sep):
                             resource = os.path.join(
-                                os.path.dirname(sys.argv[0]),
+                                os.path.dirname(argv[0]),
                                     resource.lstrip('^%s' % os.sep))
                         elif self.server.root:
                             if self.server.root.startswith(os.sep):
@@ -147,7 +161,7 @@ class TftpConnection(object):
                                                         resource)
                             else:
                                 # Relative root directory, from the daemon path
-                                daemonpath = os.path.dirname(sys.argv[0])
+                                daemonpath = os.path.dirname(argv[0])
                                 if not daemonpath.startswith(os.sep):
                                     daemonpath = os.path.normpath(
                                         os.path.join(os.getcwd(), daemonpath))
@@ -158,7 +172,7 @@ class TftpConnection(object):
             pkt['filename'] = resource
             pkt['mode'] = mode
             while options:
-                key, value, options = options.split('\000', 2)
+                key, value, options = options.split(b'\x00', 2)
                 if key == 'blksize':
                     self.blocksize = int(value)
                 elif key == 'timeout':
@@ -173,7 +187,7 @@ class TftpConnection(object):
             errnum = pkt['errnum'] = unpack('!h', buf[2:4])[0]
             errtxt = pkt['errtxt'] = buf[4:-1]
         else:
-            raise TftpError(4, 'Unknown packet type')
+            raise TftpError(TftpError.ILLEGAL, 'Unknown packet type')
         return pkt
 
     def retransmit(self):
@@ -194,7 +208,7 @@ class TftpConnection(object):
             pkt = self.parse(data)
             opcode = pkt['opcode']
             if opcode not in (RRQ, WRQ):
-                raise TftpError(4, 'Bad request')
+                raise TftpError(TftpError.ILLEGAL, 'Bad request')
 
             # Start lock-step transfer
             self.active = 1
@@ -215,13 +229,12 @@ class TftpConnection(object):
                 elif opcode == ERR:
                     self.recv_err(pkt)
                 else:
-                    raise TftpError(5, 'Invalid opcode')
+                    raise TftpError(TftpError.ILLEGAL, 'Invalid opcode')
             self.log.debug('End of active: %s:%s' % addr)
-        except TftpError, detail:
-            self.send_error(detail[0], detail[1])
-        except:
-            import traceback
-            self.log.error(traceback.format_exc())
+        except TftpError as exc:
+            self.send_error(exc.code, str(exc))
+        except Exception:
+            self.log.error(format_exc(chain=False))
         self.log.debug('Ending connection %s:%s' % addr)
 
     def recv_ack(self, pkt):
@@ -245,19 +258,19 @@ class TftpConnection(object):
         self.handle_err(pkt)
         self.retransmit()
 
-    def send_data(self, data, pack=struct.pack):
+    def send_data(self, data, pack=spack):
         self.log.debug('send_data')
         if not self.time:
-            self.time = time.time()
+            self.time = now()
         blocksize = self.blocksize
         block = self.blockNumber = self.blockNumber + 1
         lendata = len(data)
-        format = '!hh%ds' % lendata
-        pkt = pack(format, self.DATA, block, data)
+        fmt = '!hh%ds' % lendata
+        pkt = pack(fmt, self.DATA, block, data)
         self.send(pkt)
         self.active = (len(data) == blocksize)
         if not self.active and self.time:
-            total = time.time()-self.time
+            total = now()-self.time
             self.time = 0
             try:
                 name = self.file.name
@@ -270,31 +283,30 @@ class TftpConnection(object):
             except AttributeError:
                 # StringIO does not have a 'name' attribute
                 pass
-            except Exception:
-                import traceback
-                traceback.print_exc()
-                pass
+            except Exception as exc:
+                self.log.error('Error: %s' % exc)
+                self.log.warn('%s', format_exc(chain=False))
 
-    def send_ack(self, pack=struct.pack):
+    def send_ack(self, pack=spack):
         self.log.debug('send_ack')
         block = self.blockNumber
         self.blockNumber = self.blockNumber + 1
-        format = '!hh'
-        pkt = pack(format, self.ACK, block)
+        fmt = '!hh'
+        pkt = pack(fmt, self.ACK, block)
         self.send(pkt)
 
-    def send_error(self, errnum, errtext, pack=struct.pack):
+    def send_error(self, errnum, errtext, pack=spack):
         self.log.debug('send_error')
-        errtext = errtext + '\000'
-        format = '!hh%ds' % len(errtext)
-        outdata = pack(format, self.ERR, errnum, errtext)
+        errtext = errtext.encode() + b'\x00'
+        fmt = '!hh%ds' % len(errtext)
+        outdata = pack(fmt, self.ERR, errnum, errtext)
         self.sock.sendto(outdata, self.client_addr)
 
-    def send_oack(self, options, pack=struct.pack):
+    def send_oack(self, options, pack=spack):
         self.log.debug('send_oack')
         pkt = pack('!h', self.OACK)
         for k, v in options:
-            pkt += k + '\x00' + v + '\x00'
+            pkt += k.encode() + b'\x00' + v.encode() + b'\x00'
         self.send(pkt)
         # clear out the last packet buffer to prevent from retransmitting it
         self.lastpkt = ''
@@ -310,14 +322,15 @@ class TftpConnection(object):
             else:
                 try:
                     if self.is_url(resource):
-                        rp = urllib2.urlopen(resource)
+                        rp = urlopen(resource)
                         meta = rp.info()
                         filesize = int(meta.getheaders('Content-Length')[0])
                     else:
                         filesize = os.stat(resource)[6]
                 except Exception:
                     self.active = False
-                    self.send_error(1, 'Cannot access resource')
+                    self.send_error(TftpError.FILE_NOT_FOUND,
+                                    'Cannot access resource')
                     self.log.warn('Cannot stat resource %s' % resource)
                     return
             self.log.info('Send size request file %s size: %d' %
@@ -332,16 +345,17 @@ class TftpConnection(object):
         else:
             try:
                 if self.is_url(resource):
+                    self.file = urlopen(resource)
                     self.log.info("Sending resource '%s'" % resource)
-                    self.file = urllib2.urlopen(resource)
                 else:
                     resource = os.path.realpath(resource)
-                    self.log.info("Sending file '%s'" % resource)
                     self.file = open(resource, 'rb')
-            except Exception:
-                self.send_error(1, 'Cannot open resource')
+                    self.log.info("Sending file '%s'" % resource)
+            except Exception as exc:
+                self.send_error(TftpError.FILE_NOT_FOUND,
+                                'Cannot open resource')
                 self.log.warn('Cannot open file for reading %s: %s' %
-                              sys.exc_info()[:2])
+                              (resource, exc))
                 return
         if 'tsize' not in pkt:
             self.send_data(self.file.read(self.blocksize))
@@ -357,9 +371,9 @@ class TftpConnection(object):
             self.log.info('Receiving file: %s' % resource)
             self.file = open(resource, 'wb')
         except:
-            self.send_error(1, 'Cannot open file')
+            self.send_error(TftpError.FILE_NOT_FOUND, 'Cannot open file')
             self.log.error('Cannot open file for writing %s: %s' %
-                           sys.exc_info()[:2])
+                           exc_info()[:2])
             return
         self.send_ack()
 
@@ -379,7 +393,7 @@ class TftpConnection(object):
 
     @staticmethod
     def is_url(path):
-        return bool(urlparse.urlsplit(path).scheme)
+        return bool(urlsplit(path).scheme)
 
 
 class TftpServer:
@@ -388,40 +402,48 @@ class TftpServer:
     Each request is handled in its own thread
     """
 
+    TFTP_SECTION = 'tftpd'
+
     def __init__(self, logger, config, bootpd=None):
         self.log = logger
         self.config = config
         self.sock = []
         self.bootpd = bootpd
-        self.blocksize = int(self.config.get('tftp', 'blocksize', '512'))
-        self.timeout = float(self.config.get('tftp', 'timeout', '2.0'))
-        self.retry = int(self.config.get('tftp', 'blocksize', '5'))
-        self.root = self.config.get('tftp', 'root', os.getcwd())
+        self.blocksize = int(self.config.get(self.TFTP_SECTION, 'blocksize',
+                                             '512'))
+        self.timeout = float(self.config.get(self.TFTP_SECTION, 'timeout', '2.0'))
+        self.retry = int(self.config.get(self.TFTP_SECTION, 'blocksize', '5'))
+        self.root = self.config.get(self.TFTP_SECTION, 'root', os.getcwd())
         self.fcre, self.filepatterns = self.get_file_filters()
-        self.genfilecre = re.compile(r'\[(?P<name>[\w\.\-]+)\]')
+        self.genfilecre = recompile(r'\[(?P<name>[\w\.\-]+)\]')
+        self._resume = False
 
-    def bind(self):
+    def start(self):
         netconfig = self.bootpd and self.bootpd.get_netconfig()
-        host = self.config.get('tftp', 'address',
+        host = self.config.get(self.TFTP_SECTION, 'address',
                                netconfig and netconfig['server'])
         if not host:
-            raise TftpError('TFTP address no defined')
-        port = int(self.config.get('tftp', 'port', str(TFTP_PORT)))
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            raise TftpError(TftpError.NO_SUCH_USER, 'TFTP address no defined')
+        port = int(self.config.get(self.TFTP_SECTION, 'port', str(TFTP_PORT)))
+        sock = socket(AF_INET, SOCK_DGRAM)
         self.sock.append(sock)
         sock.bind((host, port))
-
-    def forever(self):
-        while True:
-            if self.bootpd:
-                if not self.bootpd.is_alive():
-                    self.log.info('Bootp daemon is dead, exiting')
-                    break
-            r, w, e = select.select(self.sock, [], self.sock)
+        self.log.info('Listening to %s:%s' % (host, port))
+        self._resume = True
+        while self._resume:
+            r = select(self.sock, [], self.sock, 0.25)[0]
+            if not r:
+                continue
             for sock in r:
                 data, addr = sock.recvfrom(516)
-                t = TftpConnection(self)
-                thread.start_new_thread(t.connect, (addr, data))
+                tc = TftpConnection(self)
+                thread = Thread(target=tc.connect, args=(addr, data),
+                                daemon=True)
+                thread.start()
+
+
+    def stop(self):
+        self._resume = False
 
     def filter_file(self, connexion, mo):
         # extract the position of the matching pattern, then extract the
@@ -432,8 +454,9 @@ class TftpServer:
             if not filename:
                 continue
             filepattern = self.filepatterns[group]
-            return re.sub(r'\{(\w+)\}', connexion._dynreplace, filepattern)
-        raise TftpError('Internal error, file matching pattern issue')
+            return resub(r'\{(\w+)\}', connexion._dynreplace, filepattern)
+        raise TftpError(TftpError.NOT_DEF,
+                        'Internal error, file matching pattern issue')
 
     def get_file_filters(self):
         patterns = []
@@ -442,12 +465,12 @@ class TftpServer:
             for pos, pattern in enumerate(self.config.options('filters'), 1):
                 value = self.config.get('filters', pattern).strip()
                 pattern = pattern.strip('\r\n \t')
-                pattern = pattern.replace('.', '\.')
-                pattern = pattern.replace('*', '.*').replace('?', '.')
+                pattern = pattern.replace(r'.', r'\.')
+                pattern = pattern.replace(r'*', r'.*').replace(r'?', r'.')
                 pname = 'p%d' % pos
                 replacements[pname] = value
-                patterns.append('(?P<%s>%s)' % (pname, pattern))
-            xre = '^(?:\./)?(?:%s)$' % '|'.join(patterns)
+                patterns.append(r'(?P<%s>%s)' % (pname, pattern))
+            xre = r'^(?:\./)?(?:%s)$' % r'|'.join(patterns)
         except NoSectionError:
-            xre = '^$'
-        return (re.compile(xre), replacements)
+            xre = r'^$'
+        return (recompile(xre), replacements)

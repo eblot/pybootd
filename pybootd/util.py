@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# Copyright (c) 2010-2016 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -17,23 +15,24 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from array import array
-import commands
-import logging
-import re
-import socket
-import struct
-import sys
-from ConfigParser import SafeConfigParser
-from six import PY3, integer_types, binary_type
+from configparser import ConfigParser, InterpolationSyntaxError
+from logging import (DEBUG, INFO, ERROR, CRITICAL, WARNING,
+                     Formatter, FileHandler, StreamHandler, getLogger)
+from logging.handlers import (BufferingHandler, NTEventLogHandler,
+                              SysLogHandler)
+from re import match
+from socket import inet_aton, inet_ntoa
+from subprocess import run
+from struct import pack as spack, unpack as sunpack
+from sys import platform, stderr
 
 try:
-    import netifaces
+    import netifaces as nif
 except ImportError:
-    import os
-    if os.uname()[0].lower() == 'darwin':
+    if platform == 'darwin':
         raise ImportError('netifaces package is not installed')
-    netifaces = None
+    nif = None
+
 
 # String values evaluated as true boolean values
 TRUE_BOOLEANS = ['on', 'high', 'true', 'enable', 'enabled', 'yes',  '1']
@@ -56,9 +55,9 @@ def to_int(value):
     """
     if not value:
         return 0
-    if isinstance(value, integer_types):
+    if isinstance(value, int):
         return int(value)
-    mo = re.match('^\s*(\d+)\s*(?:([KMkm]i?)?B?)?\s*$', value)
+    mo = match(r'^\s*(\d+)\s*(?:([KMkm]i?)?B?)?\s*$', value)
     if mo:
         mult = {'K': (1000),
                 'KI': (1 << 10),
@@ -108,7 +107,7 @@ def hexline(data, sep=' '):
        of the buffer data
     """
     try:
-        if isinstance(data, (binary_type, array)):
+        if isinstance(data, bytes):
             src = bytearray(data)
         elif isinstance(data, bytearray):
             src = data
@@ -128,20 +127,19 @@ def hexline(data, sep=' '):
 def logger_factory(logtype='syslog', logfile=None, level='WARNING',
                    logid='PXEd', format=None):
     # this code has been copied from Trac (MIT modified license)
-    logger = logging.getLogger(logid)
+    logger = getLogger(logid)
     logtype = logtype.lower()
     if logtype == 'file':
-        hdlr = logging.FileHandler(logfile)
+        hdlr = FileHandler(logfile)
     elif logtype in ('winlog', 'eventlog', 'nteventlog'):
         # Requires win32 extensions
-        hdlr = logging.handlers.NTEventLogHandler(logid,
-                                                  logtype='Application')
+        hdlr = NTEventLogHandler(logid, logtype='Application')
     elif logtype in ('syslog', 'unix'):
-        hdlr = logging.handlers.SysLogHandler('/dev/log')
+        hdlr = SysLogHandler('/dev/log')
     elif logtype in ('stderr'):
-        hdlr = logging.StreamHandler(sys.stderr)
+        hdlr = StreamHandler(stderr)
     else:
-        hdlr = logging.handlers.BufferingHandler(0)
+        hdlr = BufferingHandler(0)
 
     if not format:
         format = 'PXEd[%(module)s] %(levelname)s: %(message)s'
@@ -152,45 +150,36 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
         datefmt = '%X'
     level = level.upper()
     if level in ('DEBUG', 'ALL'):
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(DEBUG)
     elif level == 'INFO':
-        logger.setLevel(logging.INFO)
+        logger.setLevel(INFO)
     elif level == 'ERROR':
-        logger.setLevel(logging.ERROR)
+        logger.setLevel(ERROR)
     elif level == 'CRITICAL':
-        logger.setLevel(logging.CRITICAL)
+        logger.setLevel(CRITICAL)
     else:
-        logger.setLevel(logging.WARNING)
-    formatter = logging.Formatter(format, datefmt)
+        logger.setLevel(WARNING)
+    formatter = Formatter(format, datefmt)
     hdlr.setFormatter(formatter)
     logger.addHandler(hdlr)
-
-    def logerror(record):
-        import traceback
-        print_(record.msg)
-        print_(record.args)
-        traceback.print_exc()
-    # uncomment the following line to show logger formatting error
-    #hdlr.handleError = logerror
-
     return logger
 
 
 def iptoint(ipstr):
-    return struct.unpack('!I', socket.inet_aton(ipstr))[0]
+    return sunpack('!I', inet_aton(ipstr))[0]
 
 
 def inttoip(ipval):
-    return socket.inet_ntoa(struct.pack('!I', ipval))
+    return inet_ntoa(spack('!I', ipval))
 
 
 def _netifaces_get_iface_config(address):
     pool = iptoint(address)
-    for iface in netifaces.interfaces():
-        ifinfo = netifaces.ifaddresses(iface)
-        if netifaces.AF_INET not in ifinfo:
+    for iface in nif.interfaces():
+        ifinfo = nif.ifaddresses(iface)
+        if nif.AF_INET not in ifinfo:
             continue
-        for inetinfo in netifaces.ifaddresses(iface)[netifaces.AF_INET]:
+        for inetinfo in nif.ifaddresses(iface)[nif.AF_INET]:
             addr_s = inetinfo.get('addr')
             netmask_s = inetinfo.get('netmask')
             if addr_s is None or netmask_s is None:
@@ -213,7 +202,7 @@ def _netifaces_get_iface_config(address):
 def _iproute_get_iface_config(address):
     pool = iptoint(address)
     iplines = (line.strip()
-               for line in commands.getoutput("ip address show").split('\n'))
+               for line in run("ip address show").stdout.split('\n'))
     iface = None
     for l in iplines:
         items = l.split()
@@ -240,17 +229,55 @@ def _iproute_get_iface_config(address):
 def get_iface_config(address):
     if not address:
         return None
-    if not netifaces:
-        return _iproute_get_iface_config(address)
-    return _netifaces_get_iface_config(address)
+    nifcfg = _netifaces_get_iface_config if nif else _iproute_get_iface_config
+    return nifcfg(address)
 
 
-class EasyConfigParser(SafeConfigParser):
-    "ConfigParser extension to support default config values"
+def is_quoted(str_):
+    """Tells whether a string is enclosed in simple- or double- quoted
+       markers"""
+    str_ = str_.strip()
+    return (str_.startswith('"') and str_.endswith('"')) or \
+           (str_.startswith("'") and str_.endswith("'"))
 
-    def get(self, section, option, default=None):
+
+class EasyConfigParser(ConfigParser):
+    """ConfigParser extension to support default config values and do not
+       mess with multi-line option strings"""
+
+    INDENT_SIZE = 8
+
+    InterpolationSyntaxError = InterpolationSyntaxError
+
+    def get(self, section, option, default=None, raw=True, vars=None,
+            fallback=None):
+        """Return the section:option value if it exists, or the default value
+           if either the section or the option is missing"""
         if not self.has_section(section):
             return default
         if not self.has_option(section, option):
             return default
-        return SafeConfigParser.get(self, section, option)
+        return ConfigParser.get(self, section, option, raw=raw, vars=vars,
+                                fallback=fallback)
+
+    def write(self, filep):
+        """Write an .ini-format representation of the configuration state,
+           with automatic line wrapping, using improved multi-line
+           representation.
+        """
+        for section in self._sections:
+            filep.write("[%s]\n" % section)
+            for (key, value) in self._sections[section].items():
+                if key != "__name__":
+                    filep.write("%s = %s\n" %
+                                (key, str(value).replace('\n', '\n' +
+                                 ' ' * self.INDENT_SIZE)))
+            filep.write("\n")
+
+    def _interpolate(self, section, option, rawval, vars):
+        # special overloading of SafeConfigParser._interpolate:
+        # do not attempt to interpolate if the string is (double-)quoted
+        if is_quoted(rawval):
+            return rawval
+        # cannot use 'super' here as ConfigParser is outdated
+        return ConfigParser._interpolate(self, section, option, rawval, vars)
