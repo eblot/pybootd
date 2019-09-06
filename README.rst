@@ -5,15 +5,19 @@ PyBootd
 Overview
 ~~~~~~~~
 
-PyBootd is a daemon supporting a subset of the BOOTP, DHCP, PXE and TFTP
+PyBootd is a daemon supporting a subset of the BOOTP, DHCP, PXE, TFTP and HTTP
 protocols, with some handy extensions.
 
 One of its main goals is to provide a simple solution to boot up any
 PXE-enabled personal computer, with no other tool required but a standard
 Python installation.
 
+It is not designed to be feature-complete, but to be used as an easy modifiable
+code to develop custom boot solutions
+
 Pybootd can be used for any network boot up, or to install an OS without any
 physical support such as a USB key or a CD/DVD.
+
 
 Requirements
 ~~~~~~~~~~~~
@@ -36,17 +40,21 @@ Permissions
 
 - DHCP protocol requires the daemon to listen on port 67.
 - TFTP protocol requires the daemon to listen on port 69.
+- HTTP optional daemon may be run on any port.
 
 As these ports are within the server's range (<1024), the superuser privileges
 are required on Unix hosts (Linux, Mac OS X, ...) to start up these daemons.
+
 
 Status
 ~~~~~~
 
 This project is in beta development stage.
 
+
 Supported features
 ~~~~~~~~~~~~~~~~~~
+
 - Access control:
 
  1. None (any remote host can be served)
@@ -69,6 +77,20 @@ Supported features
 
 - It is possible to use pybootd with only one of the services, either TFTP or
   DHCP
+
+- A very basic HTTP server can be optionally enabled to serve files over HTTP
+  for complex hosts that require additional files (such as a root file system)
+  after the initial boot sequence.
+
+Warning
+~~~~~~~
+
+There is no strong checking of permissions nor robust file path management, so
+it is recommended NOT to run this daemon on a host with sensitive content.
+
+Although only read requests are implemented, there is no enforcement or
+strong validation of received data and strings from adversary remote clients.
+
 
 FAQ
 ~~~
@@ -104,8 +126,9 @@ Options:
   -h, --help            show this help message and exit
   -c CONFIG, --config CONFIG
                         configuration file
-  -p, --pxe             enable BOOTP/DHCP/PXE server only
-  -t, --tftp            enable TFTP server only
+  -p, --pxe             only enable BOOTP/DHCP/PXE server
+  -t, --tftp            only enable TFTP server
+  -H, --http            enable HTTP server (default: disabled)
   -d, --debug           enable debug mode
 
 ``pybootd`` daemon uses a configuration file, in ``.ini`` format, for all other
@@ -313,6 +336,28 @@ differentiation is useless, both options may refer to the same path.
      with ``./``,
    - an absolute path, when the ``root`` option starts with ``/``,
    - a URL prefix, to access remote files.
+
+
+``[httpd]`` section
+...................
+
+``address``
+   Address to listen to incoming HTTP requests. When the BOOTP daemon is
+   enabled this option is better omitted, as the address is automatically
+   received from the BOOTP daemon.
+
+``port``
+   Alternative port for incoming HTTP request, default to 80
+
+``root``
+   Base directory for the HTTP service. This path is automatically prepended
+   to the pathname issued from the TFTP client. It can either point to a local
+   directory for now.
+
+``check_ip``
+   Whether to enforce HTTP client IP or not. When enabled, requests from
+   clients that have not obtained an IP address from the BOOTP daemon are
+   rejected.
 
 
 ``[filters]`` section

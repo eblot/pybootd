@@ -416,8 +416,9 @@ class TftpServer:
         self.root = self.config.get(self.TFTP_SECTION, 'root', os.getcwd())
         self.fcre, self.filepatterns = self.get_file_filters()
         self.genfilecre = recompile(r'\[(?P<name>[\w\.\-]+)\]')
+        self._resume = False
 
-    def bind(self):
+    def start(self):
         netconfig = self.bootpd and self.bootpd.get_netconfig()
         host = self.config.get(self.TFTP_SECTION, 'address',
                                netconfig and netconfig['server'])
@@ -427,19 +428,22 @@ class TftpServer:
         sock = socket(AF_INET, SOCK_DGRAM)
         self.sock.append(sock)
         sock.bind((host, port))
-
-    def forever(self):
-        while True:
-            if self.bootpd:
-                if not self.bootpd.is_alive():
-                    self.log.info('Bootp daemon is dead, exiting')
-                    break
-            r = select(self.sock, [], self.sock)[0]
+        self.log.info('Listening to %s:%s' % (host, port))
+        self._resume = True
+        while self._resume:
+            r = select(self.sock, [], self.sock, 0.25)[0]
+            if not r:
+                continue
             for sock in r:
                 data, addr = sock.recvfrom(516)
                 tc = TftpConnection(self)
-                thread = Thread(target=tc.connect, args=(addr, data))
+                thread = Thread(target=tc.connect, args=(addr, data),
+                                daemon=True)
                 thread.start()
+
+
+    def stop(self):
+        self._resume = False
 
     def filter_file(self, connexion, mo):
         # extract the position of the matching pattern, then extract the

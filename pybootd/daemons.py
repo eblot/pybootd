@@ -20,12 +20,14 @@
 """Tiny BOOTP/DHCP/TFTP/PXE server"""
 
 from argparse import ArgumentParser
+from collections import OrderedDict
 from os.path import isfile
 from threading import Thread
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 
 from . import pybootd_path, __version__
+from .httpd import HttpServer
 from .pxed import BootpServer
 from .tftpd import TftpServer
 from .util import logger_factory, EasyConfigParser
@@ -35,49 +37,72 @@ from .util import logger_factory, EasyConfigParser
 #pylint: disable-msg=invalid-name
 
 
-class BootpDaemon(Thread):
+class Daemon(Thread):
 
-    def __init__(self, logger, config):
-        super(BootpDaemon, self).__init__(name="BootpDeamon")
-        self.daemon = True
+    def __init__(self, debug):
+        super(Daemon, self).__init__(name=self.__class__.__name__, daemon=True)
+        self._server = None
+        self._debug = debug
+
+    def run(self):
+        try:
+            self._server.start()
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            print('\nError: %s' % exc, stderr)
+            if self._debug:
+                print(format_exc(chain=False), file=stderr)
+            raise
+
+    def stop(self):
+        self._server.stop()
+
+
+class BootpDaemon(Daemon):
+
+    def __init__(self, logger, config, debug):
+        super(BootpDaemon, self).__init__(debug)
         self._server = BootpServer(logger=logger, config=config)
 
     def get_netconfig(self):
         return self._server.get_netconfig()
 
+    def is_managed_ip(self, ip):
+        return self._server.is_managed_ip(ip)
+
     def get_filename(self, ip):
         return self._server.get_filename(ip)
 
-    def run(self):
-        self._server.bind()
-        self._server.forever()
 
+class TftpDaemon(Daemon):
 
-class TftpDaemon(Thread):
-
-    def __init__(self, logger, config, bootpd=None):
-        super(TftpDaemon, self).__init__(name="TftpDeamon")
-        self.daemon = True
+    def __init__(self, logger, config, debug, bootpd=None):
+        super(TftpDaemon, self).__init__(debug)
         self._server = TftpServer(logger=logger, config=config, bootpd=bootpd)
 
-    def run(self):
-        self._server.bind()
-        self._server.forever()
+
+class HttpDaemon(Daemon):
+
+    def __init__(self, logger, config, debug, bootpd=None):
+        super(HttpDaemon, self).__init__(debug)
+        self.daemon = True
+        self._server = HttpServer(logger=logger, config=config, bootpd=bootpd)
 
 
 def main():
     debug = False
     try:
         argparser = ArgumentParser(description=modules[__name__].__doc__)
-        argparser.add_argument('-c', '--config', dest='config',
+        argparser.add_argument('-c', '--config',
                                default='pybootd/etc/pybootd.ini',
                                help='configuration file')
-        argparser.add_argument('-p', '--pxe', dest='pxe',
-                               action='store_true',
-                               help='enable BOOTP/DHCP/PXE server only')
-        argparser.add_argument('-t', '--tftp', dest='tftp',
-                               action='store_true',
-                               help='enable TFTP server only')
+        argparser.add_argument('-p', '--pxe', action='store_true',
+                               help='only enable BOOTP/DHCP/PXE server')
+        argparser.add_argument('-t', '--tftp', action='store_true',
+                               help='only enable TFTP server')
+        argparser.add_argument('-H', '--http', action='store_true',
+                               help='enable HTTP server (default: disabled)')
         argparser.add_argument('-d', '--debug', action='store_true',
                                help='enable debug mode')
         args = argparser.parse_args()
@@ -100,18 +125,33 @@ def main():
                                                     'info'))
         logger.info('-'.join(('pybootd', __version__)))
 
-        daemon = None
+        daemons = OrderedDict()
         if not args.tftp:
-            daemon = BootpDaemon(logger, cfgparser)
+            daemon = BootpDaemon(logger, cfgparser, debug)
             daemon.start()
+            daemons['bootp'] = daemon
         if not args.pxe:
-            daemon = TftpDaemon(logger, cfgparser, daemon)
+            daemon = TftpDaemon(logger, cfgparser, debug,
+                                daemons.get('bootp', None))
             daemon.start()
-        if daemon:
-            while True:
-                daemon.join(0.5)
+            daemons['tftp'] = daemon
+        if args.http:
+            daemon = HttpDaemon(logger, cfgparser, debug, daemons.get('bootp'))
+            daemon.start()
+            daemons['http'] = daemon
+        resume = True
+        while daemons:
+            zombies = set()
+            for name, daemon in daemons.items():
+                if not resume:
+                    daemon.stop()
+                daemon.join(0.1)
                 if not daemon.is_alive():
-                    break
+                    logger.warn('%s daemon terminated', name)
+                    zombies.add(name)
+                    resume = False
+            for name in zombies:
+                del daemons[name]
     except Exception as exc:
         print('\nError: %s' % exc, file=stderr)
         if debug:

@@ -255,7 +255,10 @@ class BootpServer:
     def get_netconfig(self):
         return self.netconfig
 
-    def bind(self):
+    def is_managed_ip(self, address):
+        return address in self.ippool.values()
+
+    def start(self):
         host = self.config.get(self.BOOTP_SECTION, 'address', '0.0.0.0')
         port = self.config.get(self.BOOTP_SECTION, 'port',
                                str(BOOTP_PORT_REQUEST))
@@ -265,17 +268,21 @@ class BootpServer:
         self.sock.append(sock)
         self.log.info('Listening to %s:%s' % (host, port))
         sock.bind((host, int(port)))
-
-    def forever(self):
-        while True:
+        self._resume = True
+        while self._resume:
             try:
-                r = select(self.sock, [], self.sock)[0]
+                r = select(self.sock, [], self.sock, 0.25)[0]
+                if not r:
+                    continue
                 for sock in r:
                     data, addr = sock.recvfrom(556)
                     self.handle(sock, addr, data)
             except Exception as exc:
                 self.log.critical('%s\n%s' % (exc, format_exc()))
                 sleep(1)
+
+    def stop(self):
+        self._resume = False
 
     def parse_options(self, tail):
         self.log.debug('Parsing DHCP options')
