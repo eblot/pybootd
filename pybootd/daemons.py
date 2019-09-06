@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 #
 # Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
@@ -20,6 +19,7 @@
 
 """Tiny BOOTP/DHCP/TFTP/PXE server"""
 
+from argparse import ArgumentParser
 from os.path import isfile
 from threading import Thread
 from sys import exit as sysexit, modules, stderr
@@ -68,7 +68,6 @@ class TftpDaemon(Thread):
 def main():
     debug = False
     try:
-        from argparse import ArgumentParser
         argparser = ArgumentParser(description=modules[__name__].__doc__)
         argparser.add_argument('-c', '--config', dest='config',
                                default='pybootd/etc/pybootd.ini',
@@ -92,7 +91,7 @@ def main():
 
         cfgparser = EasyConfigParser()
         with open(pybootd_path(args.config), 'rt') as config:
-            cfgparser.readfp(config)
+            cfgparser.read_file(config)
 
         logger = logger_factory(logtype=cfgparser.get('logger', 'type',
                                                       'stderr'),
@@ -119,5 +118,5 @@ def main():
             print(format_exc(chain=False), file=stderr)
         sysexit(1)
     except KeyboardInterrupt:
-        print("\nAborting...")
+        print("\nAborting...", file=stderr)
         sysexit(2)
