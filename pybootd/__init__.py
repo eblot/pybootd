@@ -17,7 +17,7 @@
 
 import os
 
-__version__ = '1.7.0'
+__version__ = '1.7.1'
 
 
 def pybootd_path(path):

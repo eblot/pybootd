@@ -71,7 +71,7 @@ class TftpConnection(object):
         self.client_addr = None
         self.sock = None
         self.active = 0  # 0: inactive, 1: active
-        self.blockNumber = 0
+        self.blocknum = 0
         self.lastpkt = ''
         self.mode = ''
         self.filename = ''
@@ -239,16 +239,16 @@ class TftpConnection(object):
 
     def recv_ack(self, pkt):
         self.log.debug('recv_ack')
-        if pkt['block'] == self.blockNumber:
+        if pkt['block'] == self.blocknum:
             # We received the correct ACK
             self.handle_ack(pkt)
         else:
             self.log.warn('Expecting ACK for block %d, received %d' %
-                          (pkt['block'], self.blockNumber))
+                          (pkt['block'], self.blocknum))
 
     def recv_data(self, pkt):
         self.log.debug('recv_data')
-        if pkt['block'] == self.blockNumber:
+        if pkt['block'] == self.blocknum:
             # We received the correct DATA packet
             self.active = (self.blocksize == len(pkt['data']))
             self.handle_data(pkt)
@@ -263,7 +263,7 @@ class TftpConnection(object):
         if not self.time:
             self.time = now()
         blocksize = self.blocksize
-        block = self.blockNumber = (self.blockNumber + 1) 0xFFFF
+        block = self.blocknum = (self.blocknum + 1) 0xFFFF
         lendata = len(data)
         fmt = '!hH%ds' % lendata
         pkt = pack(fmt, self.DATA, block, data)
@@ -289,8 +289,8 @@ class TftpConnection(object):
 
     def send_ack(self, pack=spack):
         self.log.debug('send_ack')
-        block = self.blockNumber
-        self.blockNumber =  (self.blockNumber + 1) 0xFFFF
+        block = self.blocknum
+        self.blocknum =  (self.blocknum + 1) 0xFFFF
         fmt = '!hH'
         pkt = pack(fmt, self.ACK, block)
         self.send(pkt)
@@ -411,7 +411,8 @@ class TftpServer:
         self.bootpd = bootpd
         self.blocksize = int(self.config.get(self.TFTP_SECTION, 'blocksize',
                                              '512'))
-        self.timeout = float(self.config.get(self.TFTP_SECTION, 'timeout', '2.0'))
+        self.timeout = float(self.config.get(self.TFTP_SECTION, 'timeout',
+                                             '2.0'))
         self.retry = int(self.config.get(self.TFTP_SECTION, 'blocksize', '5'))
         self.root = self.config.get(self.TFTP_SECTION, 'root', os.getcwd())
         self.fcre, self.filepatterns = self.get_file_filters()
