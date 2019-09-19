@@ -319,17 +319,17 @@ class BootpServer:
             buf += spack('!BB%ds' % len(uuid),
                          97, len(uuid), uuid)
             clientclass = options[60]
-            clientclass = clientclass[:clientclass.find(':')]
+            clientclass = clientclass[:clientclass.find(b':')]
             buf += spack('!BB%ds' % len(clientclass),
                          60, len(clientclass), clientclass)
-            vendor = ''
+            vendor = b''
             vendor += spack('!BBB', PXE_DISCOVERY_CONTROL, 1, 0x0A)
             vendor += spack('!BBHB4s', PXE_BOOT_SERVERS, 2+1+4,
                             0, 1, server)
-            srvstr = 'Python'
+            srvstr = b'Python'
             vendor += spack('!BBHB%ds' % len(srvstr), PXE_BOOT_MENU,
                             2+1+len(srvstr), 0, len(srvstr), srvstr)
-            prompt = 'Stupid PXE'
+            prompt = b'Stupid PXE'
             vendor += spack('!BBB%ds' % len(prompt), PXE_MENU_PROMPT,
                             1+len(prompt), len(prompt), prompt)
             buf += spack('!BB%ds' % len(vendor), 43,
