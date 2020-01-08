@@ -263,7 +263,7 @@ class TftpConnection(object):
         if not self.time:
             self.time = now()
         blocksize = self.blocksize
-        block = self.blocknum = (self.blocknum + 1) 0xFFFF
+        block = self.blocknum = (self.blocknum + 1) & 0xFFFF
         lendata = len(data)
         fmt = '!hH%ds' % lendata
         pkt = pack(fmt, self.DATA, block, data)
@@ -290,7 +290,7 @@ class TftpConnection(object):
     def send_ack(self, pack=spack):
         self.log.debug('send_ack')
         block = self.blocknum
-        self.blocknum =  (self.blocknum + 1) 0xFFFF
+        self.blocknum = (self.blocknum + 1) & 0xFFFF
         fmt = '!hH'
         pkt = pack(fmt, self.ACK, block)
         self.send(pkt)
