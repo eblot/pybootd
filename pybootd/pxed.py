@@ -133,7 +133,7 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 57: 'Message length',
                 58: 'Renewal time',
                 59: 'Rebinding time',
-                60: 'Class ID',
+                60: 'Vendor class identifier',
                 61: 'GUID',
                 64: 'Network Information Service+ domain',
                 65: 'Network Information Service+ servers',
@@ -200,7 +200,8 @@ class BootpServer:
     (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
     BOOTP_SECTION = 'bootpd'
-    BUGGY_CLIENTS_SECTION = 'buggy_clients'
+    BOOT_FILE_SECTION = 'bootfile'
+    BUGGY_CLIENT_SECTION = 'buggy_clients'
 
     def __init__(self, logger, config):
         self.sock = []
@@ -252,10 +253,19 @@ class BootpServer:
                     self.acl[entry.upper().replace('-', ':')] = \
                         to_bool(self.config.get(access, entry))
         self.buggy_clients = set()
-        if self.config.options(self.BUGGY_CLIENTS_SECTION):
-            for entry in self.config.options(self.BUGGY_CLIENTS_SECTION):
-                if to_bool(self.config.get(self.BUGGY_CLIENTS_SECTION, entry)):
+        if self.config.options(self.BUGGY_CLIENT_SECTION):
+            for entry in self.config.options(self.BUGGY_CLIENT_SECTION):
+                if to_bool(self.config.get(self.BUGGY_CLIENT_SECTION, entry)):
                     self.buggy_clients.add(entry.upper().replace('-', ':'))
+        self.boot_files = dict()
+        if not self.config.options(self.BOOT_FILE_SECTION):
+            raise BootpError("Mising '%s' section" % self.BOOT_FILE_SECTION)
+        for entry in self.config.options(self.BOOT_FILE_SECTION):
+            self.boot_files[entry] = self.config.get(self.BOOT_FILE_SECTION,
+                                                     entry)
+        if 'default' not in self.boot_files:
+            raise BootpError("'%s' section should contain at least the default"
+                             "boot file")
         # pre-fill ippool if specified
         if self.config.has_section('static_dhcp'):
             for mac_str, ip_str in config.items('static_dhcp'):
@@ -316,7 +326,7 @@ class BootpServer:
             iface = self.find_interface(self.config.get(self.BOOTP_SECTION,
                                                         'pool_start'))
             if not iface:
-                raise RuntimeError('Unable to retrieve binding interface')
+                raise BootpError('Unable to retrieve binding interface')
             if platform == 'linux':
                 from socket import SO_BINDTODEVICE
                 sock.setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, iface)
@@ -324,8 +334,8 @@ class BootpServer:
                 IP_BOUND_IF = 25
                 sock.setsockopt(IPPROTO_IP, IP_BOUND_IF, if_nametoindex(iface))
             else:
-                raise RuntimeError('Bind to interface not supported on %s' %
-                                   platform)
+                raise BootpError('Bind to interface not supported on %s' %
+                                 platform)
         self.sock.append(sock)
         self.log.info('Listening to %s:%s' % (host, port))
         sock.bind((host, int(port)))
@@ -576,9 +586,30 @@ class BootpServer:
             for opt in options[55]:
                 try:
                     parameter = DHCP_OPTIONS[opt]
-                    self.log.info('Client request: %s', parameter)
+                    self.log.debug('Client request: %s', parameter)
                 except KeyError:
                     self.log.warning('Unknown requested option: %d', opt)
+
+        boot_file = self.boot_files['default']
+        if 60 in options:
+            clientclass = options[60]
+            classids = clientclass.split(b':')
+            if len(classids) >= 3 and \
+                    classids[0].lower() == b'pxeclient' and \
+                    classids[1].lower() == b'arch':
+                try:
+                    architecture = classids[2].decode()
+                except UnicodeDecodeError:
+                    self.log.error('Unable to decode architecture')
+                    return
+                try:
+                    boot_file = self.boot_files[architecture]
+                    self.log.info("Selecting bootfile '%s' for architecture "
+                                  "%s", boot_file, architecture)
+                except KeyError:
+                    self.log.error('No boot file defined for architecture %s',
+                                   architecture)
+                    return
 
         # construct reply
         buf[BOOTP_HOPS] = 0
@@ -629,8 +660,7 @@ class BootpServer:
                       self.config.get(self.BOOTP_SECTION,
                                       'domain', 'localdomain')]).encode()
         # file
-        buf[BOOTP_FILE] = self.config.get(self.BOOTP_SECTION,
-                                          'boot_file', '\x00').encode()
+        buf[BOOTP_FILE] = boot_file.encode()
 
         if not dhcp_msg_type:
             self.log.warn('No DHCP message type found, discarding request')
