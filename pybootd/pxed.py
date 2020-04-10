@@ -239,6 +239,7 @@ class BootpServer:
                 if access == 'mac' and mac_str not in self.acl:
                     self.acl[mac_key] = True
         self.access = access
+        self._resume = False
 
     # Private
     def _notify(self, notice, uuid_str, mac_str, ip):
@@ -379,11 +380,11 @@ class BootpServer:
             uuid = self.uuidpool.get(mac_addr, None)
             pxe = False
             self.log.info('PXE UUID not present in request')
-        uuid_str = uuid and ('%s-%s-%s-%s-%s' % tuple([hexlify(x)
-            for x in (uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
-            ])).upper()
+        uuid_str = (':'.join(hexlify(x).decode() for x in
+                             (uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10],
+                              uuid[10:16]))).upper() if uuid else None
         if uuid_str:
-            self.log.info('UUID is %s for MAC %s' % (uuid_str, mac_str))
+            self.log.info('UUID is %s for MAC %s', uuid_str, mac_str)
 
         hostname = ''
         filename = ''
@@ -606,9 +607,8 @@ class BootpServer:
                 dns_ip = inet_aton(dns_str)
                 pkt += spack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += spack('!BBI', DHCP_LEASE_TIME, 4,
-                           int(self.config.get(self.BOOTP_SECTION,
-                                               'lease_time',
-                                               str(24*3600))))
+                     int(self.config.get(self.BOOTP_SECTION, 'lease_time',
+                                         str(24*3600))))
 
         # do not attempt to produce a PXE-augmented response for
         # regular DHCP requests
