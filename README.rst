@@ -201,10 +201,6 @@ client requests at least an IP address twice:
    BOOTP or DHCP requests, this option should be enabled. This option accepts
    a boolean value.
 
-``boot_file``
-   Boot filename to send back to the BOOTP client, which usually requests such
-   a file over TFTP to boot up after it has been assigned a network address.
-
 ``domain``
    Domain part of the client FQDN, that is the network's domain name.
 
@@ -306,6 +302,42 @@ The value for each entry is a boolean, *i.e.*::
 The ``pxe``/``dhcp`` option pair enables the remote HTTP server to identify
 the boot phase: either a BIOS initialization or an OS boot sequence. When such
 differentiation is useless, both options may refer to the same path.
+
+
+``[bootfile]`` section
+......................
+
+This section contains one entry for each supported architecture.
+It defines the name of the initial boot file the client should request,
+indexed on the architecture it reports, if any.
+
+It should contain at least one entry, ``default``, which map to the bootfile
+for clients that do no expose their architecture.
+
+The bootfile is usually requested over TFTP to boot up after the client has
+been assigned a network address.
+
+Each entry is the architecture string, with a filename value.
+
+
+``[buggy_clients]`` section
+...........................
+
+When a BOOTP client requests a network address, the BOOTP/DHCP server should
+broadcast on the client's LAN the DHCP offerring. Using the client's network is
+recommended, as it avoid broadcasting BOOTP/DHCP packets to other networks.
+
+Some clients, notably the clients based on Intel firmwares, are stupid enough
+to ignore DHCP offering which is broadcasted to the network broadcast address.
+They do require the DHCP server to broadcast to the global ``255.255.255.255``
+address.
+
+This section lists the MAC of the clients that are so stupid they need this
+global broadcast address to work. If you use Intel BIOS/UEFI, this option is
+likely needed.
+
+Each entry is a MAC address, using the ``-`` byte separator, with a boolean
+value.
 
 
 ``[tftpd]`` section
@@ -458,8 +490,12 @@ The ``pybootd.ini`` would contain::
   pool_start = 192.168.1.100
   ; Google DNS
   dns = 8.8.8.8
-  ; boot-up executable the client should request through TFTP
-  boot_file = pxelinux.0
+
+  [bootfile]
+  ; boot-up executable the client should request through TFTP (BIOS)
+  default = pxelinux.0
+  ; boot-up executable the client should request through TFTP (UEFI x86-64)
+  00007 = shimx64.efi
 
   [tftpd]
   ; URL to install a Debian 6.0 Intel/AMD 64-bit network installation
