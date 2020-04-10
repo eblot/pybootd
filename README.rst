@@ -26,14 +26,10 @@ Python
 ------
 
 - Python_ 3.5+ or above is required. Python_ 2.x is not longer supported.
-- Netifaces_ Python module is required on OS X; on Linux only, iproute2_ can be
-  used as an alternative
-- Optional: python_pkg_resources_ Python module
+- Netifaces_ Python module is required
 
-.. _Python: http://python.org/
-.. _Netifaces: http://alastairs-place.net/netifaces/
-.. _iproute2: http://www.linuxfoundation.org/collaborate/workgroups/networking/iproute2
-.. _python_pkg_resources: http://pythonhosted.org/distribute/pkg_resources.html
+.. _Python: https://python.org/
+.. _Netifaces: https://github.com/al45tair/netifaces
 
 Permissions
 -----------
