@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2020 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -25,6 +25,7 @@
 #pylint: disable-msg=too-many-nested-blocks
 #pylint: disable-msg=too-many-instance-attributes
 #pylint: disable-msg=no-name-in-module
+#pylint: disable-msg=no-self-use
 
 
 from binascii import hexlify
@@ -149,6 +150,8 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 93: 'System architecture',
                 94: 'Network type',
                 97: 'UUID',
+                119: 'Domain search',
+                121: 'Classless static route',
                 128: 'DOCSIS full security server',
                 # --- PXE vendor-specific (and other crap) ---
                 129: 'PXE vendor-specific',
@@ -158,6 +161,9 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 133: 'PXE vendor-specific',
                 134: 'PXE vendor-specific',
                 135: 'PXE vendor-specific',
+                # ---
+                249: 'Private/Classless static route',
+                252: 'Private/Proxy autodiscovery',
                 255: 'End of DHCP options'}
 
 DHCP_DISCOVER = 1
@@ -392,8 +398,8 @@ class BootpServer:
         try:
             if 97 in client_params:
                 uuid = options[97]
-            buf += spack('!BB%ds' % len(uuid),
-                         97, len(uuid), uuid)
+                buf += spack('!BB%ds' % len(uuid),
+                             97, len(uuid), uuid)
             if 13 in client_params:
                 path = self.config.get(TftpServer.TFTP_SECTION, 'root', '')
                 pathname = realpath(joinpath(path,
@@ -444,7 +450,9 @@ class BootpServer:
                      12, len(clientname), clientname)
 
     def handle(self, sock, addr, data):
-        self.log.info('Sender: %s on socket %s' % (addr, sock.getsockname()))
+        sockname = sock.getsockname()
+        self.log.debug('Sender %s:%d on socket %s:%d',
+                       addr[0], addr[1], sockname[0], sockname[1])
         if len(data) < DHCPFORMATSIZE:
             self.log.error('Cannot be a DHCP or BOOTP request - too small!')
         tail = data[DHCPFORMATSIZE:]
@@ -470,12 +478,12 @@ class BootpServer:
         if 97 in options and len(options[97]) == 17:
             uuid = options[97][1:]
             pxe = True
-            self.log.info('PXE UUID has been received')
+            self.log.debug('PXE UUID has been received')
         # or retrieved from the cache (DHCP mode)
         else:
             uuid = self.uuidpool.get(mac_addr, None)
             pxe = False
-            self.log.info('PXE UUID not present in request')
+            self.log.debug('PXE UUID not present in request')
         uuid_str = (':'.join(hexlify(x).decode() for x in
                              (uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10],
                               uuid[10:16]))).upper() if uuid else None
