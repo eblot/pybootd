@@ -15,20 +15,6 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from binascii import hexlify
-from re import compile as recompile
-from select import select
-from socket import (inet_aton, inet_ntoa, socket,
-                    AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET,
-                    SO_BROADCAST, SO_REUSEADDR)
-from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from time import sleep
-from traceback import format_exc
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlunsplit
-from urllib.request import urlopen
-from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
-
 #pylint: disable-msg=broad-except
 #pylint: disable-msg=invalid-name
 #pylint: disable-msg=missing-docstring
@@ -37,6 +23,29 @@ from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 #pylint: disable-msg=too-many-locals
 #pylint: disable-msg=too-many-statements
 #pylint: disable-msg=too-many-nested-blocks
+#pylint: disable-msg=too-many-instance-attributes
+#pylint: disable-msg=no-name-in-module
+
+
+from binascii import hexlify
+from os import stat
+from os.path import realpath, join as joinpath
+from re import compile as recompile
+from select import select
+from socket import (if_nametoindex, inet_aton, inet_ntoa, socket,
+                    AF_INET, SOCK_DGRAM, IPPROTO_UDP, IPPROTO_IP, SOL_SOCKET,
+                    SO_BROADCAST, SO_REUSEADDR)
+from struct import calcsize as scalc, pack as spack, unpack as sunpack
+from sys import platform
+from time import sleep
+from traceback import format_exc
+from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlunsplit
+from urllib.request import urlopen
+from netifaces import ifaddresses, interfaces
+from .tftpd import TftpServer
+from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 
 
 BOOTP_PORT_REQUEST = 67
@@ -107,7 +116,7 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 40: 'Network Information Service domain',
                 41: 'Network Information servers',
                 42: 'Network Time Protocol servers',
-                43: 'Vendor specific',
+                43: 'Vendor specific',  # Used by some PXE clients...
                 44: 'NetBIOS over TCP/IP name server',
                 45: 'NetBIOS over TCP/IP datagram server',
                 46: 'NetBIOS over TCP/IP node type',
@@ -140,6 +149,15 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 93: 'System architecture',
                 94: 'Network type',
                 97: 'UUID',
+                128: 'DOCSIS full security server',
+                # --- PXE vendor-specific (and other crap) ---
+                129: 'PXE vendor-specific',
+                130: 'PXE vendor-specific',
+                131: 'PXE vendor-specific',
+                132: 'PXE vendor-specific',
+                133: 'PXE vendor-specific',
+                134: 'PXE vendor-specific',
+                135: 'PXE vendor-specific',
                 255: 'End of DHCP options'}
 
 DHCP_DISCOVER = 1
@@ -168,19 +186,21 @@ PXE_MENU_PROMPT = 10
 
 
 class BootpError(Exception):
-    """Bootp error"""
-    pass
+    """Bootp error
+    """
 
 
 class BootpServer:
     """BOOTP Server
-       Implements bootstrap protocol"""
+       Implements bootstrap protocol.
+    """
 
     ACCESS_LOCAL = ['uuid', 'mac']  # Access modes, defined locally
     ACCESS_REMOTE = ['http']  # Access modes, remotely retrieved
     (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
     BOOTP_SECTION = 'bootpd'
+    BUGGY_CLIENTS_SECTION = 'buggy_clients'
 
     def __init__(self, logger, config):
         self.sock = []
@@ -231,6 +251,11 @@ class BootpServer:
                 for entry in self.config.options(access):
                     self.acl[entry.upper().replace('-', ':')] = \
                         to_bool(self.config.get(access, entry))
+        self.buggy_clients = set()
+        if self.config.options(self.BUGGY_CLIENTS_SECTION):
+            for entry in self.config.options(self.BUGGY_CLIENTS_SECTION):
+                if to_bool(self.config.get(self.BUGGY_CLIENTS_SECTION, entry)):
+                    self.buggy_clients.add(entry.upper().replace('-', ':'))
         # pre-fill ippool if specified
         if self.config.has_section('static_dhcp'):
             for mac_str, ip_str in config.items('static_dhcp'):
@@ -253,6 +278,27 @@ class BootpServer:
             notify_sock.sendto(msg, n)
 
     # Public
+
+    @classmethod
+    def find_interface(cls, address: str) -> Optional[str]:
+        iaddress = sunpack('!I', inet_aton(address))[0]
+        for iface in interfaces():
+            for confs in ifaddresses(iface).values():
+                for conf in confs:
+                    if all([x in conf for x in ('addr', 'netmask')]):
+                        address = conf['addr']
+                        if ':' in address:
+                            # IPv6
+                            continue
+                        netmask = conf['netmask']
+                        iaddr = sunpack('!I', inet_aton(address))[0]
+                        inet = sunpack('!I', inet_aton(netmask))[0]
+                        inic = iaddr & inet
+                        ires = iaddress & inet
+                        if inic == ires:
+                            return iface
+        return None
+
     def get_netconfig(self):
         return self.netconfig
 
@@ -266,6 +312,20 @@ class BootpServer:
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        if self.buggy_clients:
+            iface = self.find_interface(self.config.get(self.BOOTP_SECTION,
+                                                        'pool_start'))
+            if not iface:
+                raise RuntimeError('Unable to retrieve binding interface')
+            if platform == 'linux':
+                from socket import SO_BINDTODEVICE
+                sock.setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, iface)
+            elif platform == 'darwin':
+                IP_BOUND_IF = 25
+                sock.setsockopt(IPPROTO_IP, IP_BOUND_IF, if_nametoindex(iface))
+            else:
+                raise RuntimeError('Bind to interface not supported on %s' %
+                                   platform)
         self.sock.append(sock)
         self.log.info('Listening to %s:%s' % (host, port))
         sock.bind((host, int(port)))
@@ -313,16 +373,42 @@ class BootpServer:
                 continue
             dhcp_tags[tag] = value
 
-    def build_pxe_options(self, options, server):
+    def build_pxe_options(self, options, server, bootp_buf):
+        try:
+            client_params = options[55]
+        except IndexError:
+            client_params = b''
         buf = b''
         try:
-            uuid = options[97]
+            if 97 in client_params:
+                uuid = options[97]
             buf += spack('!BB%ds' % len(uuid),
                          97, len(uuid), uuid)
-            clientclass = options[60]
-            clientclass = clientclass[:clientclass.find(b':')]
-            buf += spack('!BB%ds' % len(clientclass),
-                         60, len(clientclass), clientclass)
+            if 13 in client_params:
+                path = self.config.get(TftpServer.TFTP_SECTION, 'root', '')
+                pathname = realpath(joinpath(path,
+                                             bootp_buf[BOOTP_FILE].decode()))
+                try:
+                    bootfile_size = stat(pathname).st_size
+                except OSError as exc:
+                    self.log.error('Cannot get size of %s: %s', pathname, exc)
+                else:
+                    bootfile_block = (bootfile_size+511)//512
+                    buf += spack('!BBH', 13, scalc('!H'), bootfile_block)
+            if 60 in client_params:
+                clientclass = options[60]
+                clientclass = clientclass[:clientclass.find(b':')]
+                buf += spack('!BB%ds' % len(clientclass),
+                             60, len(clientclass), clientclass)
+            if 66 in client_params:
+                tftp_server = bootp_buf[BOOTP_SNAME]
+                buf += spack('!BB%ds' % len(tftp_server), 66,
+                             len(tftp_server), tftp_server)
+            if 67 in client_params:
+                boot_file = bootp_buf[BOOTP_FILE]
+                buf += spack('!BB%ds' % len(boot_file), 67,
+                             len(boot_file), boot_file)
+            # Vendor specific (PXE extension)
             vendor = b''
             vendor += spack('!BBB', PXE_DISCOVERY_CONTROL, 1, 0x0A)
             vendor += spack('!BBHB4s', PXE_BOOT_SERVERS, 2+1+4,
@@ -485,6 +571,15 @@ class BootpServer:
                 item = locals()['%s_str' % self.access]
             self.log.info('%s access is authorized, '
                           'request will be satisfied' % item)
+
+        if 55 in options:
+            for opt in options[55]:
+                try:
+                    parameter = DHCP_OPTIONS[opt]
+                    self.log.info('Client request: %s', parameter)
+                except KeyError:
+                    self.log.warning('Unknown requested option: %d', opt)
+
         # construct reply
         buf[BOOTP_HOPS] = 0
         buf[BOOTP_OP] = BOOTREPLY
@@ -613,7 +708,7 @@ class BootpServer:
         # do not attempt to produce a PXE-augmented response for
         # regular DHCP requests
         if pxe:
-            extra_buf = self.build_pxe_options(options, server)
+            extra_buf = self.build_pxe_options(options, server, buf)
             if not extra_buf:
                 return
         else:
@@ -625,6 +720,9 @@ class BootpServer:
         # update the UUID cache
         if pxe:
             self.uuidpool[mac_addr] = uuid
+
+        if mac_addr in self.buggy_clients:
+            addr = ('255.255.255.255', addr[1])
 
         # send the response
         sock.sendto(pkt, addr)

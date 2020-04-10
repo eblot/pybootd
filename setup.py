@@ -26,9 +26,7 @@ def _read(fname):
     return open(joinpath(dirname(__file__), fname)).read()
 
 
-requirements = []
-if platform == 'darwin':
-    requirements.append('netifaces (>= 0.5)')
+REQUIREMENTS = ['netifaces >= 0.10']
 
 
 setup(
@@ -42,7 +40,7 @@ setup(
     url='http://github.com/eblot/pybootd',
     download_url='https://github.com/eblot/pybootd/tarball/master',
     packages=['pybootd'],
-    requires=requirements,
+    requires=REQUIREMENTS,
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: No Input/Output (Daemon)',
