@@ -751,7 +751,9 @@ class BootpServer:
         if pxe:
             self.uuidpool[mac_addr] = uuid
 
-        if mac_addr in self.buggy_clients:
+        if mac_str in self.buggy_clients:
+            self.log.debug('Force global broadcast for buggy client %s',
+                           mac_str)
             addr = ('255.255.255.255', addr[1])
 
         # send the response
