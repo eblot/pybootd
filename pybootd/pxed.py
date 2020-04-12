@@ -335,9 +335,9 @@ class BootpServer:
                 raise BootpError('Unable to retrieve binding interface')
             if platform == 'linux':
                 from socket import SO_BINDTODEVICE
-                sock.setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, iface)
+                sock.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, iface.encode())
             elif platform == 'darwin':
-                IP_BOUND_IF = 25
+                IP_BOUND_IF = 25  # unfortunately not mapped to Python
                 sock.setsockopt(IPPROTO_IP, IP_BOUND_IF, if_nametoindex(iface))
             else:
                 raise BootpError('Bind to interface not supported on %s' %
