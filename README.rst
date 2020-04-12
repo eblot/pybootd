@@ -464,13 +464,6 @@ path to be set to ``/boot`` and the ``dhcp`` path to ``/linux``.
 Sample configurations
 ~~~~~~~~~~~~~~~~~~~~~
 
-Installing a Debian 6.0 machine from the official archive
----------------------------------------------------------
-As pybootd's *tftpd* server is able to retrieve remote files using the HTTP
-protocol, there is no need to manually download any file from a Debian mirror.
-The daemon will forward all file requests to the mirror on behalf of the client
-being installed.
-
 The ``pybootd.ini`` would contain::
 
   [logger]
@@ -494,8 +487,7 @@ The ``pybootd.ini`` would contain::
   00007 = shimx64.efi
 
   [tftpd]
-  ; URL to install a Debian 6.0 Intel/AMD 64-bit network installation
-  root = http://http.us.debian.org/debian/dists/squeeze/main/installer-amd64/current/images/netboot
+  root = http://example.com/installer-amd64/images/netboot
 
   [filters]
   ; serve a simple configuration file to the linux PXE helper
