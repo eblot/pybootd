@@ -42,7 +42,7 @@ from time import sleep
 from traceback import format_exc
 from typing import Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import urlopen
 from netifaces import ifaddresses, interfaces
 from .tftpd import TftpServer
@@ -295,8 +295,8 @@ class BootpServer:
 
     # Public
 
-    @classmethod
-    def find_interface(cls, address: str) -> Optional[str]:
+    @staticmethod
+    def find_interface(address: str) -> Optional[str]:
         iaddress = sunpack('!I', inet_aton(address))[0]
         for iface in interfaces():
             for confs in ifaddresses(iface).values():
@@ -314,6 +314,10 @@ class BootpServer:
                         if inic == ires:
                             return iface
         return None
+
+    @staticmethod
+    def is_url(path):
+        return bool(urlsplit(path).scheme)
 
     def get_netconfig(self):
         return self.netconfig
@@ -401,16 +405,27 @@ class BootpServer:
                 buf += spack('!BB%ds' % len(uuid),
                              97, len(uuid), uuid)
             if 13 in client_params:
+                bootfile_size = 0
                 path = self.config.get(TftpServer.TFTP_SECTION, 'root', '')
-                pathname = realpath(joinpath(path,
-                                             bootp_buf[BOOTP_FILE].decode()))
-                try:
-                    bootfile_size = stat(pathname).st_size
-                except OSError as exc:
-                    self.log.error('Cannot get size of %s: %s', pathname, exc)
+                bootfile_name = bootp_buf[BOOTP_FILE].decode()
+                if not self.is_url(path):
+                    pathname = realpath(joinpath(path,bootfile_name))
+                    try:
+                        bootfile_size = stat(pathname).st_size
+                    except OSError as exc:
+                        self.log.error('Cannot get size of %s: %s',
+                                       pathname, exc)
                 else:
-                    bootfile_block = (bootfile_size+511)//512
-                    buf += spack('!BBH', 13, scalc('!H'), bootfile_block)
+                    url = joinpath(path, bootp_buf[BOOTP_FILE].decode())
+                    try:
+                        resource = urlopen(url)
+                        int(resource.info()['Content-Length'])
+                    except Exception as exc:
+                        self.log.error('Cannot retrieve size of %s: %s',
+                                       url, exc)
+            if bootfile_size:
+                bootfile_block = (bootfile_size+511)//512
+                buf += spack('!BBH', 13, scalc('!H'), bootfile_block)
             if 60 in client_params:
                 clientclass = options[60]
                 clientclass = clientclass[:clientclass.find(b':')]
