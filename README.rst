@@ -2,6 +2,9 @@
 PyBootd
 +++++++
 
+.. image:: https://github.com/eblot/pybootd/workflows/Python%20package/badge.svg
+   :alt: Python package build status
+
 Overview
 ~~~~~~~~
 
