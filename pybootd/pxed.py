@@ -419,11 +419,13 @@ class BootpServer:
                     url = joinpath(path, bootp_buf[BOOTP_FILE].decode())
                     try:
                         resource = urlopen(url)
-                        int(resource.info()['Content-Length'])
+                        bootfile_size = int(resource.info()['Content-Length'])
                     except Exception as exc:
                         self.log.error('Cannot retrieve size of %s: %s',
                                        url, exc)
             if bootfile_size:
+                self.log.debug('Bootfile %s is %d byte long',
+                               bootfile_name, bootfile_size)
                 bootfile_block = (bootfile_size+511)//512
                 buf += spack('!BBH', 13, scalc('!H'), bootfile_block)
             if 60 in client_params:
