@@ -42,7 +42,7 @@ Permissions
 - HTTP optional daemon may be run on any port.
 
 As these ports are within the server's range (<1024), the superuser privileges
-are required on Unix hosts (Linux, Mac OS X, ...) to start up these daemons.
+are required on Unix hosts (Linux, macOS, ...) to start up these daemons.
 
 
 Status
@@ -56,16 +56,16 @@ Supported features
 
 - Access control:
 
- 1. None (any remote host can be served)
- 2. MAC address ACL
- 3. UUID based ACL - requires PXE protocol
- 4. HTTP forwarding - authorization is delegated to a remote server using
-    simple HTTP GET requests
+1. None (any remote host can be served)
+2. MAC address ACL
+3. UUID based ACL - requires PXE protocol
+4. HTTP forwarding - authorization is delegated to a remote server using
+   simple HTTP GET requests
 
 - Local or remote file serving:
 
- - For example, it is possible to boot up a full Debian system directly from
-   the Internet, without storing any file on the pybootd host machine
+- For example, it is possible to boot up a full Debian system directly from
+  the Internet, without storing any file on the pybootd host machine
 
 - Network notification of client requests through UDP messages
 
@@ -110,6 +110,14 @@ Common errors
   This errir is often triggered with an invalid listening address setting.
   Try listening on all IPv4 interfaces with ``address = 0.0.0.0`` and use ACL
   to discard requests from network you do not want to serve.
+
+DHCP client keeps requesting an address but seems to receive none
+  Some stupid clients - such as the ones implemented in BIOS/UEFI from Intel
+  silently ignore proper network broadcast packets. They only consider global
+  broadcast packets. The Ethernet MAC of such clients should be added to
+  the ``[buggy_clients]`` section, so that global broadcast packets are
+  generated for these clients.
+
 
 Configuration
 -------------
