@@ -265,6 +265,12 @@ block. The value for each entry is a boolean, *i.e.*::
 Note that due to a limitation of the configuration parser, ':' byte separator
 in MAC addresses is not allowed, please use '-' separator.
 
+It is possible to use a mask syntax to specify a range of MACs addresses, for
+example:
+
+  AA-BB-CC/24 = enable
+
+Accepts all Ethernet addresses whose OUI is AA:BB:CC.
 
 ``[static_dhcp]`` section
 .........................
@@ -345,6 +351,8 @@ likely needed.
 
 Each entry is a MAC address, using the ``-`` byte separator, with a boolean
 value.
+
+This section also accepts mask syntax, see ``[mac]`` section for details.
 
 
 ``[tftpd]`` section
