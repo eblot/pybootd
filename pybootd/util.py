@@ -24,7 +24,7 @@ from re import match
 from socket import inet_aton, inet_ntoa
 from subprocess import run
 from struct import pack as spack, unpack as sunpack
-from sys import platform, stderr
+from sys import platform, stderr, stdout
 
 try:
     import netifaces as nif
@@ -138,6 +138,8 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
         hdlr = SysLogHandler('/dev/log')
     elif logtype in ('stderr'):
         hdlr = StreamHandler(stderr)
+    elif logtype in ('stdout'):
+        hdlr = StreamHandler(stdout)
     else:
         hdlr = BufferingHandler(0)
 
