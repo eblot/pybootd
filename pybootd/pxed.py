@@ -137,6 +137,7 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 72: 'World Wide Web servers',
                 73: 'Finger servers',
                 74: 'Internet Relay Chat server',
+                81: 'Client FQDN',  # https://tools.ietf.org/html/rfc4702
                 93: 'System architecture',
                 94: 'Network type',
                 97: 'UUID',
@@ -307,8 +308,8 @@ class BootpServer:
                 self.log.debug(" option %d: '%s', size:%d %s" %
                                (tag, option, length, hexline(value)))
             except KeyError:
-                self.log.debug('  unknown option %d, size:%d %s:' %
-                               (tag, length, hexline(value)))
+                self.log.debug('  unknown option %d (0x%02x), size:%d %s:' %
+                               (tag, tag, length, hexline(value)))
                 continue
             dhcp_tags[tag] = value
 
