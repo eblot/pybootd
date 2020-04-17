@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2020 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -17,7 +17,7 @@
 
 import os
 
-__version__ = '1.7.1'
+__version__ = '1.7.2'
 
 
 def pybootd_path(path):

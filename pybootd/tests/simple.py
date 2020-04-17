@@ -27,10 +27,10 @@ from binascii import hexlify, unhexlify
 from io import StringIO
 from socket import (socket, timeout, AF_INET, SOCK_DGRAM, IPPROTO_UDP,
                     SOL_SOCKET, SO_BROADCAST, SO_REUSEADDR)
-from sys import modules, stdout
+from sys import modules
 from textwrap import fill
 from time import sleep
-from unittest import TestCase, TestSuite, SkipTest, makeSuite, main as ut_main
+from unittest import TestCase, TestSuite, makeSuite, main as ut_main
 from pybootd.daemons import BootpDaemon
 from pybootd.util import EasyConfigParser, logger_factory
 
@@ -122,12 +122,12 @@ default = pxelinux.0
             self.sock.sendto(req, ('<broadcast>', 67))
             try:
                 resp = self.sock.recv(1024)
-                print('response:\n',
-                      fill(hexlify(resp).decode(),
-                           initial_indent='  ',
-                           subsequent_indent='   '))
+                # print('response:\n',
+                #       fill(hexlify(resp).decode(),
+                #            initial_indent='  ',
+                #            subsequent_indent='   '))
             except timeout:
-                print('Timeout')
+                self.assertFalse(True, 'No response from response')
 
 def suite():
     suite_ = TestSuite()

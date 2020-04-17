@@ -294,7 +294,8 @@ class BootpServer:
             # padding
             if tag == 0:
                 padding_count += 1
-                if padding_count > 255:
+                tail = tail[1:]
+                if padding_count > 0xFF:
                     raise ValueError('Padding overflow')
                 continue
             padding_count = 0
