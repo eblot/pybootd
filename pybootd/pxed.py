@@ -262,7 +262,7 @@ class BootpServer:
                     kent = acl_builder(entry)
                     self.acl[kent] = to_bool(self.config.get(access, entry))
         self.buggy_clients = OrderedDict()
-        if self.config.options(self.BUGGY_CLIENT_SECTION):
+        if self.config.has_section(self.BUGGY_CLIENT_SECTION):
             for entry in self.config.options(self.BUGGY_CLIENT_SECTION):
                 item = self.build_mac_acl(entry)
                 self.buggy_clients[item] = \
@@ -670,7 +670,7 @@ class BootpServer:
                 if uuid:
                     item_str = '/'.join((uuid_str, mac_str))
                 else:
-                    item_str = mac_addr
+                    item_str = mac_str
                 if not result:
                     if result is not None:
                         self.log.info('%s access in ACL is disabled', item_str)
@@ -853,11 +853,11 @@ class BootpServer:
             self.uuidpool[mac_addr] = uuid
 
         if self.check_acl(self.buggy_clients, 'mac', mac_addr):
-            self.log.error('Force global broadcast for buggy client %s',
-                           mac_str)
+            self.log.info('Force global broadcast for buggy client %s',
+                          mac_str)
             addr = ('255.255.255.255', addr[1])
         else:
-            self.log.error('Not buggy')
+            self.log.debug('Not buggy')
 
         # send the response
         sock.sendto(pkt, addr)
