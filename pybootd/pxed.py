@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2020 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -15,20 +15,6 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-from binascii import hexlify
-from re import compile as recompile
-from select import select
-from socket import (inet_aton, inet_ntoa, socket,
-                    AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET,
-                    SO_BROADCAST, SO_REUSEADDR)
-from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from time import sleep
-from traceback import format_exc
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlunsplit
-from urllib.request import urlopen
-from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
-
 #pylint: disable-msg=broad-except
 #pylint: disable-msg=invalid-name
 #pylint: disable-msg=missing-docstring
@@ -37,6 +23,32 @@ from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 #pylint: disable-msg=too-many-locals
 #pylint: disable-msg=too-many-statements
 #pylint: disable-msg=too-many-nested-blocks
+#pylint: disable-msg=too-many-instance-attributes
+#pylint: disable-msg=no-name-in-module
+#pylint: disable-msg=no-self-use
+
+
+from binascii import hexlify
+from collections import OrderedDict
+from os import stat
+from os.path import realpath, join as joinpath
+from re import compile as recompile, sub as resub
+from select import select
+from socket import (if_nametoindex, inet_aton, inet_ntoa, socket,
+                    AF_INET, SOCK_DGRAM, IPPROTO_UDP, IPPROTO_IP, SOL_SOCKET,
+                    SO_BROADCAST, SO_REUSEADDR)
+from struct import calcsize as scalc, pack as spack, unpack as sunpack
+from sys import platform
+from time import sleep
+from traceback import format_exc
+from typing import Optional, Tuple, Union
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.request import urlopen
+from uuid import UUID
+from netifaces import ifaddresses, interfaces
+from .tftpd import TftpServer
+from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 
 
 BOOTP_PORT_REQUEST = 67
@@ -107,7 +119,7 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 40: 'Network Information Service domain',
                 41: 'Network Information servers',
                 42: 'Network Time Protocol servers',
-                43: 'Vendor specific',
+                43: 'Vendor specific',  # Used by some PXE clients...
                 44: 'NetBIOS over TCP/IP name server',
                 45: 'NetBIOS over TCP/IP datagram server',
                 46: 'NetBIOS over TCP/IP node type',
@@ -124,7 +136,7 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 57: 'Message length',
                 58: 'Renewal time',
                 59: 'Rebinding time',
-                60: 'Class ID',
+                60: 'Vendor class identifier',
                 61: 'GUID',
                 64: 'Network Information Service+ domain',
                 65: 'Network Information Service+ servers',
@@ -141,6 +153,20 @@ DHCP_OPTIONS = {0: 'Byte padding',
                 93: 'System architecture',
                 94: 'Network type',
                 97: 'UUID',
+                119: 'Domain search',
+                121: 'Classless static route',
+                128: 'DOCSIS full security server',
+                # --- PXE vendor-specific (and other crap) ---
+                129: 'PXE vendor-specific',
+                130: 'PXE vendor-specific',
+                131: 'PXE vendor-specific',
+                132: 'PXE vendor-specific',
+                133: 'PXE vendor-specific',
+                134: 'PXE vendor-specific',
+                135: 'PXE vendor-specific',
+                # ---
+                249: 'Private/Classless static route',
+                252: 'Private/Proxy autodiscovery',
                 255: 'End of DHCP options'}
 
 DHCP_DISCOVER = 1
@@ -169,19 +195,22 @@ PXE_MENU_PROMPT = 10
 
 
 class BootpError(Exception):
-    """Bootp error"""
-    pass
+    """Bootp error
+    """
 
 
 class BootpServer:
     """BOOTP Server
-       Implements bootstrap protocol"""
+       Implements bootstrap protocol.
+    """
 
-    ACCESS_LOCAL = ['uuid', 'mac']  # Access modes, defined locally
+    ACCESS_LOCAL = {'uuid': 128, 'mac': 48}  # Access modes, defined locally
     ACCESS_REMOTE = ['http']  # Access modes, remotely retrieved
     (ST_IDLE, ST_PXE, ST_DHCP) = range(3)  # Current state
 
     BOOTP_SECTION = 'bootpd'
+    BOOT_FILE_SECTION = 'bootfile'
+    BUGGY_CLIENT_SECTION = 'buggy_clients'
 
     def __init__(self, logger, config):
         self.sock = []
@@ -223,23 +252,43 @@ class BootpServer:
             self.acl = None
         else:
             access = access.lower()
-            if access not in self.ACCESS_LOCAL + self.ACCESS_REMOTE:
+            if access not in list(self.ACCESS_LOCAL) + self.ACCESS_REMOTE:
                 raise BootpError('Invalid access mode: %s' % access)
             if not self.config.has_section(access):
                 raise BootpError("Missing access section '%s'" % access)
-            self.acl = {}
+            self.acl = OrderedDict()
             if access in self.ACCESS_LOCAL:
                 for entry in self.config.options(access):
-                    self.acl[entry.upper().replace('-', ':')] = \
-                        to_bool(self.config.get(access, entry))
+                    acl_builder = getattr(self, 'build_%s_acl' % access)
+                    kent = acl_builder(entry)
+                    self.acl[kent] = to_bool(self.config.get(access, entry))
+        self.buggy_clients = OrderedDict()
+        if self.config.has_section(self.BUGGY_CLIENT_SECTION):
+            for entry in self.config.options(self.BUGGY_CLIENT_SECTION):
+                item = self.build_mac_acl(entry)
+                self.buggy_clients[item] = \
+                    to_bool(self.config.get(self.BUGGY_CLIENT_SECTION, entry))
+        self.boot_files = dict()
+        if not self.config.options(self.BOOT_FILE_SECTION):
+            raise BootpError("Mising '%s' section" % self.BOOT_FILE_SECTION)
+        for entry in self.config.options(self.BOOT_FILE_SECTION):
+            self.boot_files[entry] = self.config.get(self.BOOT_FILE_SECTION,
+                                                     entry)
+        if 'default' not in self.boot_files:
+            raise BootpError("'%s' section should contain at least the default"
+                             "boot file")
         # pre-fill ippool if specified
         if self.config.has_section('static_dhcp'):
             for mac_str, ip_str in config.items('static_dhcp'):
                 mac_key = mac_str.upper().replace('-', ':')
                 self.ippool[mac_key] = ip_str
-                if access == 'mac' and mac_str not in self.acl:
-                    self.acl[mac_key] = True
+                mac = int(resub('[-:]', '', mac_str), 16)
+                mask = (1 << self.ACCESS_LOCAL['mac']) - 1
+                access_key = (mac, mask)
+                if access == 'mac' and access_key not in self.acl:
+                    self.acl[access_key] = True
         self.access = access
+        self._resume = False
 
     # Private
     def _notify(self, notice, uuid_str, mac_str, ip):
@@ -253,6 +302,95 @@ class BootpServer:
             notify_sock.sendto(msg, n)
 
     # Public
+
+    @staticmethod
+    def find_interface(address: str) -> Optional[str]:
+        iaddress = sunpack('!I', inet_aton(address))[0]
+        for iface in interfaces():
+            for confs in ifaddresses(iface).values():
+                for conf in confs:
+                    if all([x in conf for x in ('addr', 'netmask')]):
+                        address = conf['addr']
+                        if ':' in address:
+                            # IPv6
+                            continue
+                        netmask = conf['netmask']
+                        iaddr = sunpack('!I', inet_aton(address))[0]
+                        inet = sunpack('!I', inet_aton(netmask))[0]
+                        inic = iaddr & inet
+                        ires = iaddress & inet
+                        if inic == ires:
+                            return iface
+        return None
+
+    @staticmethod
+    def is_url(path):
+        return bool(urlsplit(path).scheme)
+
+    @classmethod
+    def build_mac_acl(cls, entry: str) -> Tuple[int, int]:
+        parts = entry.split('/', 1)
+        values = []
+        bitcount = cls.ACCESS_LOCAL['mac']
+        maxval = (1 << bitcount) - 1
+        for mask, part in enumerate(parts):
+            try:
+                if mask:
+                    value = maxval & ~((1 << int(part)) - 1)
+                else:
+                    part = resub('[-:]', '', part)
+                    value = int(part, 16)
+                    value <<= bitcount - len(part)*4
+                if not 0 <= value <= maxval:
+                    raise ValueError()
+                values.append(value)
+            except Exception:
+                raise ValueError('Invalid ACL value: %s' % entry)
+        if len(values) < 2:
+            values.append(maxval)
+        return tuple(values)
+
+    @classmethod
+    def build_uuid_acl(cls, entry: str) -> Tuple[int, int]:
+        parts = entry.split('/', 1)
+        values = []
+        bitcount = cls.ACCESS_LOCAL['uuid']
+        maxval = (1 << bitcount) - 1
+        for part in parts:
+            try:
+                value = UUID('{%s}' % part).int
+                if not 0 <= value <= maxval:
+                    raise ValueError()
+                values.append(value)
+            except Exception:
+                raise ValueError('Invalid ACL value: %s' % entry)
+        if len(values) < 2:
+            values.append(maxval)
+        return tuple(values)
+
+    @classmethod
+    def check_acl(cls, acl: dict, access: str, value: Union[bytes, UUID]) \
+            -> Union[bool, None]:
+        width = cls.ACCESS_LOCAL[access]
+        if access == 'mac':
+            ival = int(hexlify(value), 16)
+        else:
+            ival = value.int
+        access_key = (ival, (1 << width) - 1)
+        if access_key in acl:
+            # try direct match
+            result = acl[access_key]
+        else:
+            # find matching filter
+            result = None
+            for val, mask in acl:
+                if ival & mask == val & mask:
+                    result = acl[(val, mask)]
+                    break
+        if result:
+            return True
+        return result
+
     def get_netconfig(self):
         return self.netconfig
 
@@ -266,6 +404,20 @@ class BootpServer:
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        if self.buggy_clients:
+            iface = self.find_interface(self.config.get(self.BOOTP_SECTION,
+                                                        'pool_start'))
+            if not iface:
+                raise BootpError('Unable to retrieve binding interface')
+            if platform == 'linux':
+                from socket import SO_BINDTODEVICE
+                sock.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, iface.encode())
+            elif platform == 'darwin':
+                IP_BOUND_IF = 25  # unfortunately not mapped to Python
+                sock.setsockopt(IPPROTO_IP, IP_BOUND_IF, if_nametoindex(iface))
+            else:
+                raise BootpError('Bind to interface not supported on %s' %
+                                 platform)
         self.sock.append(sock)
         self.log.info('Listening to %s:%s' % (host, port))
         sock.bind((host, int(port)))
@@ -314,16 +466,55 @@ class BootpServer:
                 continue
             dhcp_tags[tag] = value
 
-    def build_pxe_options(self, options, server):
+    def build_pxe_options(self, options, server, bootp_buf):
+        try:
+            client_params = options[55]
+        except IndexError:
+            client_params = b''
         buf = b''
         try:
-            uuid = options[97]
-            buf += spack('!BB%ds' % len(uuid),
-                         97, len(uuid), uuid)
-            clientclass = options[60]
-            clientclass = clientclass[:clientclass.find(b':')]
-            buf += spack('!BB%ds' % len(clientclass),
-                         60, len(clientclass), clientclass)
+            if 97 in client_params:
+                uuid = options[97]
+                buf += spack('!BB%ds' % len(uuid),
+                             97, len(uuid), uuid)
+            if 13 in client_params:
+                bootfile_size = 0
+                path = self.config.get(TftpServer.TFTP_SECTION, 'root', '')
+                bootfile_name = bootp_buf[BOOTP_FILE].decode()
+                if not self.is_url(path):
+                    pathname = realpath(joinpath(path,bootfile_name))
+                    try:
+                        bootfile_size = stat(pathname).st_size
+                    except OSError as exc:
+                        self.log.error('Cannot get size of %s: %s',
+                                       pathname, exc)
+                else:
+                    url = joinpath(path, bootp_buf[BOOTP_FILE].decode())
+                    try:
+                        resource = urlopen(url)
+                        bootfile_size = int(resource.info()['Content-Length'])
+                    except Exception as exc:
+                        self.log.error('Cannot retrieve size of %s: %s',
+                                       url, exc)
+            if bootfile_size:
+                self.log.debug('Bootfile %s is %d byte long',
+                               bootfile_name, bootfile_size)
+                bootfile_block = (bootfile_size+511)//512
+                buf += spack('!BBH', 13, scalc('!H'), bootfile_block)
+            if 60 in client_params:
+                clientclass = options[60]
+                clientclass = clientclass[:clientclass.find(b':')]
+                buf += spack('!BB%ds' % len(clientclass),
+                             60, len(clientclass), clientclass)
+            if 66 in client_params:
+                tftp_server = bootp_buf[BOOTP_SNAME]
+                buf += spack('!BB%ds' % len(tftp_server), 66,
+                             len(tftp_server), tftp_server)
+            if 67 in client_params:
+                boot_file = bootp_buf[BOOTP_FILE]
+                buf += spack('!BB%ds' % len(boot_file), 67,
+                             len(boot_file), boot_file)
+            # Vendor specific (PXE extension)
             vendor = b''
             vendor += spack('!BBB', PXE_DISCOVERY_CONTROL, 1, 0x0A)
             vendor += spack('!BBHB4s', PXE_BOOT_SERVERS, 2+1+4,
@@ -349,7 +540,9 @@ class BootpServer:
                      12, len(clientname), clientname)
 
     def handle(self, sock, addr, data):
-        self.log.info('Sender: %s on socket %s' % (addr, sock.getsockname()))
+        sockname = sock.getsockname()
+        self.log.debug('Sender %s:%d on socket %s:%d',
+                       addr[0], addr[1], sockname[0], sockname[1])
         if len(data) < DHCPFORMATSIZE:
             self.log.error('Cannot be a DHCP or BOOTP request - too small!')
         tail = data[DHCPFORMATSIZE:]
@@ -370,22 +563,23 @@ class BootpServer:
 
         server_addr = self.netconfig['server']
         mac_addr = buf[BOOTP_CHADDR][:6]
+        identifiers = {'mac': mac_addr}
         mac_str = ':'.join(['%02X' % x for x in mac_addr])
         # is the UUID received (PXE mode)
         if 97 in options and len(options[97]) == 17:
-            uuid = options[97][1:]
+            uuid = UUID(bytes=options[97][1:])
+            identifiers['uuid'] = uuid
             pxe = True
-            self.log.info('PXE UUID has been received')
+            self.log.debug('PXE UUID has been received')
         # or retrieved from the cache (DHCP mode)
         else:
             uuid = self.uuidpool.get(mac_addr, None)
+            identifiers['uuid'] = uuid
             pxe = False
-            self.log.info('PXE UUID not present in request')
-        uuid_str = uuid and ('%s-%s-%s-%s-%s' % tuple([hexlify(x)
-            for x in (uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
-            ])).upper()
+            self.log.debug('PXE UUID not present in request')
+        uuid_str = str(uuid) if uuid else None
         if uuid_str:
-            self.log.info('UUID is %s for MAC %s' % (uuid_str, mac_str))
+            self.log.info('UUID is %s for MAC %s', uuid_str, mac_str)
 
         hostname = ''
         filename = ''
@@ -434,7 +628,7 @@ class BootpServer:
                     parameters['uuid'] = uuid_str
                 if not pxe and mac_str in self.ippool:
                     parameters['ip'] = self.ippool[mac_str]
-                item = uuid_str or mac_str
+                item_str = uuid_str or mac_str
                 # only bother the authentication host when a state change is
                 # required.
                 checkhost = currentstate != newstate
@@ -466,26 +660,60 @@ class BootpServer:
                         self.log.critical('Internal error: %s' % exc)
                         self.states[mac_str] = self.ST_IDLE
                         return
-            # local access is only validated if mac address is not yet known
             elif mac_str not in self.ippool:
-                item = locals()['%s_str' % self.access]
+                # local access is only validated if mac addr is not yet known
+                item = identifiers.get(self.access, None)
                 if not item:
                     self.log.info('Missing %s identifier, '
                                   'ignoring %s request' %
                                   (self.access, mac_str))
                     return
-                if item not in self.acl:
-                    self.log.info('%s is not in ACL list, '
-                                  'ignoring %s request' % (item, mac_str))
-                    return
-                if not self.acl[item]:
-                    self.log.info('%s access is disabled, '
-                                  'ignoring %s request' % (item, mac_str))
+                result = self.check_acl(self.acl, self.access, item)
+                if uuid:
+                    item_str = '/'.join((uuid_str, mac_str))
+                else:
+                    item_str = mac_str
+                if not result:
+                    if result is not None:
+                        self.log.info('%s access in ACL is disabled', item_str)
+                    else:
+                        self.log.info('%s is not in ACL list', item_str)
                     return
             else:
-                item = locals()['%s_str' % self.access]
+                # mac is registered, that is already authorized
+                item_str = mac_str
             self.log.info('%s access is authorized, '
-                          'request will be satisfied' % item)
+                          'request will be satisfied' % item_str)
+
+        if 55 in options:
+            for opt in options[55]:
+                try:
+                    parameter = DHCP_OPTIONS[opt]
+                    self.log.debug('Client request: %s', parameter)
+                except KeyError:
+                    self.log.warning('Unknown requested option: %d', opt)
+
+        boot_file = self.boot_files['default']
+        if 60 in options:
+            clientclass = options[60]
+            classids = clientclass.split(b':')
+            if len(classids) >= 3 and \
+                    classids[0].lower() == b'pxeclient' and \
+                    classids[1].lower() == b'arch':
+                try:
+                    architecture = classids[2].decode()
+                except UnicodeDecodeError:
+                    self.log.error('Unable to decode architecture')
+                    return
+                try:
+                    boot_file = self.boot_files[architecture]
+                    self.log.info("Selecting bootfile '%s' for architecture "
+                                  "%s", boot_file, architecture)
+                except KeyError:
+                    self.log.error('No boot file defined for architecture %s',
+                                   architecture)
+                    return
+
         # construct reply
         buf[BOOTP_HOPS] = 0
         buf[BOOTP_OP] = BOOTREPLY
@@ -535,8 +763,7 @@ class BootpServer:
                       self.config.get(self.BOOTP_SECTION,
                                       'domain', 'localdomain')]).encode()
         # file
-        buf[BOOTP_FILE] = self.config.get(self.BOOTP_SECTION,
-                                          'boot_file', '\x00').encode()
+        buf[BOOTP_FILE] = boot_file.encode()
 
         if not dhcp_msg_type:
             self.log.warn('No DHCP message type found, discarding request')
@@ -608,14 +835,13 @@ class BootpServer:
                 dns_ip = inet_aton(dns_str)
                 pkt += spack('!BB4s', DHCP_IP_DNS, 4, dns_ip)
         pkt += spack('!BBI', DHCP_LEASE_TIME, 4,
-                           int(self.config.get(self.BOOTP_SECTION,
-                                               'lease_time',
-                                               str(24*3600))))
+                     int(self.config.get(self.BOOTP_SECTION, 'lease_time',
+                                         str(24*3600))))
 
         # do not attempt to produce a PXE-augmented response for
         # regular DHCP requests
         if pxe:
-            extra_buf = self.build_pxe_options(options, server)
+            extra_buf = self.build_pxe_options(options, server, buf)
             if not extra_buf:
                 return
         else:
@@ -627,6 +853,13 @@ class BootpServer:
         # update the UUID cache
         if pxe:
             self.uuidpool[mac_addr] = uuid
+
+        if self.check_acl(self.buggy_clients, 'mac', mac_addr):
+            self.log.info('Force global broadcast for buggy client %s',
+                          mac_str)
+            addr = ('255.255.255.255', addr[1])
+        else:
+            self.log.debug('Not buggy')
 
         # send the response
         sock.sendto(pkt, addr)

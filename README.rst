@@ -2,6 +2,9 @@
 PyBootd
 +++++++
 
+.. image:: https://github.com/eblot/pybootd/workflows/Python%20package/badge.svg
+   :alt: Python package build status
+
 Overview
 ~~~~~~~~
 
@@ -26,14 +29,10 @@ Python
 ------
 
 - Python_ 3.5+ or above is required. Python_ 2.x is not longer supported.
-- Netifaces_ Python module is required on OS X; on Linux only, iproute2_ can be
-  used as an alternative
-- Optional: python_pkg_resources_ Python module
+- Netifaces_ Python module is required
 
-.. _Python: http://python.org/
-.. _Netifaces: http://alastairs-place.net/netifaces/
-.. _iproute2: http://www.linuxfoundation.org/collaborate/workgroups/networking/iproute2
-.. _python_pkg_resources: http://pythonhosted.org/distribute/pkg_resources.html
+.. _Python: https://python.org/
+.. _Netifaces: https://github.com/al45tair/netifaces
 
 Permissions
 -----------
@@ -43,7 +42,7 @@ Permissions
 - HTTP optional daemon may be run on any port.
 
 As these ports are within the server's range (<1024), the superuser privileges
-are required on Unix hosts (Linux, Mac OS X, ...) to start up these daemons.
+are required on Unix hosts (Linux, macOS, ...) to start up these daemons.
 
 
 Status
@@ -57,16 +56,16 @@ Supported features
 
 - Access control:
 
- 1. None (any remote host can be served)
- 2. MAC address ACL
- 3. UUID based ACL - requires PXE protocol
- 4. HTTP forwarding - authorization is delegated to a remote server using
-    simple HTTP GET requests
+1. None (any remote host can be served)
+2. MAC address ACL
+3. UUID based ACL - requires PXE protocol
+4. HTTP forwarding - authorization is delegated to a remote server using
+   simple HTTP GET requests
 
 - Local or remote file serving:
 
- - For example, it is possible to boot up a full Debian system directly from
-   the Internet, without storing any file on the pybootd host machine
+- For example, it is possible to boot up a full Debian system directly from
+  the Internet, without storing any file on the pybootd host machine
 
 - Network notification of client requests through UDP messages
 
@@ -111,6 +110,14 @@ Common errors
   This errir is often triggered with an invalid listening address setting.
   Try listening on all IPv4 interfaces with ``address = 0.0.0.0`` and use ACL
   to discard requests from network you do not want to serve.
+
+DHCP client keeps requesting an address but seems to receive none
+  Some stupid clients - such as the ones implemented in BIOS/UEFI from Intel
+  silently ignore proper network broadcast packets. They only consider global
+  broadcast packets. The Ethernet MAC of such clients should be added to
+  the ``[buggy_clients]`` section, so that global broadcast packets are
+  generated for these clients.
+
 
 Configuration
 -------------
@@ -201,10 +208,6 @@ client requests at least an IP address twice:
    BOOTP or DHCP requests, this option should be enabled. This option accepts
    a boolean value.
 
-``boot_file``
-   Boot filename to send back to the BOOTP client, which usually requests such
-   a file over TFTP to boot up after it has been assigned a network address.
-
 ``domain``
    Domain part of the client FQDN, that is the network's domain name.
 
@@ -262,6 +265,12 @@ block. The value for each entry is a boolean, *i.e.*::
 Note that due to a limitation of the configuration parser, ':' byte separator
 in MAC addresses is not allowed, please use '-' separator.
 
+It is possible to use a mask syntax to specify a range of MACs addresses, for
+example:
+
+  AA-BB-CC/24 = enable
+
+Accepts all Ethernet addresses whose OUI is AA:BB:CC.
 
 ``[static_dhcp]`` section
 .........................
@@ -306,6 +315,44 @@ The value for each entry is a boolean, *i.e.*::
 The ``pxe``/``dhcp`` option pair enables the remote HTTP server to identify
 the boot phase: either a BIOS initialization or an OS boot sequence. When such
 differentiation is useless, both options may refer to the same path.
+
+
+``[bootfile]`` section
+......................
+
+This section contains one entry for each supported architecture.
+It defines the name of the initial boot file the client should request,
+indexed on the architecture it reports, if any.
+
+It should contain at least one entry, ``default``, which map to the bootfile
+for clients that do no expose their architecture.
+
+The bootfile is usually requested over TFTP to boot up after the client has
+been assigned a network address.
+
+Each entry is the architecture string, with a filename value.
+
+
+``[buggy_clients]`` section
+...........................
+
+When a BOOTP client requests a network address, the BOOTP/DHCP server should
+broadcast on the client's LAN the DHCP offerring. Using the client's network is
+recommended, as it avoid broadcasting BOOTP/DHCP packets to other networks.
+
+Some clients, notably the clients based on Intel firmwares, are stupid enough
+to ignore DHCP offering which is broadcasted to the network broadcast address.
+They do require the DHCP server to broadcast to the global ``255.255.255.255``
+address.
+
+This section lists the MAC of the clients that are so stupid they need this
+global broadcast address to work. If you use Intel BIOS/UEFI, this option is
+likely needed.
+
+Each entry is a MAC address, using the ``-`` byte separator, with a boolean
+value.
+
+This section also accepts mask syntax, see ``[mac]`` section for details.
 
 
 ``[tftpd]`` section
@@ -436,13 +483,6 @@ path to be set to ``/boot`` and the ``dhcp`` path to ``/linux``.
 Sample configurations
 ~~~~~~~~~~~~~~~~~~~~~
 
-Installing a Debian 6.0 machine from the official archive
----------------------------------------------------------
-As pybootd's *tftpd* server is able to retrieve remote files using the HTTP
-protocol, there is no need to manually download any file from a Debian mirror.
-The daemon will forward all file requests to the mirror on behalf of the client
-being installed.
-
 The ``pybootd.ini`` would contain::
 
   [logger]
@@ -458,12 +498,15 @@ The ``pybootd.ini`` would contain::
   pool_start = 192.168.1.100
   ; Google DNS
   dns = 8.8.8.8
-  ; boot-up executable the client should request through TFTP
-  boot_file = pxelinux.0
+
+  [bootfile]
+  ; boot-up executable the client should request through TFTP (BIOS)
+  default = pxelinux.0
+  ; boot-up executable the client should request through TFTP (UEFI x86-64)
+  00007 = shimx64.efi
 
   [tftpd]
-  ; URL to install a Debian 6.0 Intel/AMD 64-bit network installation
-  root = http://http.us.debian.org/debian/dists/squeeze/main/installer-amd64/current/images/netboot
+  root = http://example.com/installer-amd64/images/netboot
 
   [filters]
   ; serve a simple configuration file to the linux PXE helper

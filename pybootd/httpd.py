@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2019 Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2010-2020 Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2010-2011 Neotion
 #
 # This library is free software; you can redistribute it and/or
@@ -19,7 +19,7 @@
 
 from argparse import ArgumentParser, FileType
 from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 from os import getcwd
 from os.path import isfile, join as joinpath, realpath
 from sys import exit as sysexit, modules, stderr
@@ -73,7 +73,7 @@ class HttpRequestHandler(SimpleHTTPRequestHandler):
             return False
         return True
 
-class HttpServer(ThreadingHTTPServer):
+class HttpServer(HTTPServer):
 
     HTTP_SECTION = 'httpd'
 

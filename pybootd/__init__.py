@@ -15,9 +15,22 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-import os
 
-__version__ = '1.7.2'
+#pylint: disable-msg=missing-docstring
+
+__version__ = '1.8.0'
+__title__ = 'PyBootd'
+__description__ = 'Simplified BOOTP/DHCP/PXE and TFTP server'
+__uri__ = 'http://github.com/eblot/pybootd'
+__doc__ = __description__ + ' <' + __uri__ + '>'
+__author__ = 'Emmanuel Blot'
+# For all support requests, please open a new issue on GitHub
+__email__ = 'emmanuel.blot@free.fr'
+__license__ = 'LGPL v2'
+__copyright__ = 'Copyright (c) 2011-2020 Emmanuel Blot'
+
+
+import os
 
 
 def pybootd_path(path):
