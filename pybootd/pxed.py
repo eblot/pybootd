@@ -52,7 +52,6 @@ from .util import hexline, to_bool, iptoint, inttoip, get_iface_config
 
 
 BOOTP_PORT_REQUEST = 67
-BOOTP_PORT_REPLY = 68
 
 BOOTREQUEST = 1
 BOOTREPLY = 2
@@ -858,8 +857,6 @@ class BootpServer:
             self.log.info('Force global broadcast for buggy client %s',
                           mac_str)
             addr = ('255.255.255.255', addr[1])
-        else:
-            self.log.debug('Not buggy')
 
         # send the response
         sock.sendto(pkt, addr)

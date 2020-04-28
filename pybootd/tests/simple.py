@@ -25,8 +25,9 @@
 
 from binascii import hexlify, unhexlify
 from io import StringIO
-from socket import (socket, timeout, AF_INET, SOCK_DGRAM, IPPROTO_UDP,
-                    SOL_SOCKET, SO_BROADCAST, SO_REUSEADDR)
+from socket import (if_nametoindex, socket, timeout, AF_INET, SOCK_DGRAM,
+                    IPPROTO_IP, IPPROTO_UDP, SOL_SOCKET, SO_BROADCAST,
+                    SO_REUSEADDR)
 from sys import modules
 from textwrap import fill
 from time import sleep
@@ -45,8 +46,13 @@ class PxeSimpleTestCase(TestCase):
                                     level='DEBUG')
         cfgparser = EasyConfigParser()
         config = StringIO("""
+[logger]
+type = stdout
+level = debug
+
 [bootpd]
 address = 0.0.0.0
+port = 67
 pool_start = 127.0.0.100
 pool_count = 5
 servername = localhost
@@ -65,6 +71,7 @@ default = pxelinux.0
             """)
         cfgparser.read_file(config)
         cls.config = cfgparser
+        cls.server_port = int(cls.config.get('bootpd', 'port', '67'))
 
     def setUp(self):
         self.server = BootpDaemon(logger=self.logger, config=self.config,
@@ -73,7 +80,7 @@ default = pxelinux.0
         self.sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         self.sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.sock.settimeout(1)
-        self.sock.bind(('', 68))
+        self.sock.bind(('', self.server_port+1))
         self.server.start()
         # be sure the server can be scheduled and started before resuming
         sleep(0.1)
@@ -117,17 +124,22 @@ default = pxelinux.0
         00000000000000000000000000000000000000000000000000000000000000000000
         00000000
         """
-        for hexdata in (discover, request):
+        for step, hexdata in enumerate((discover, request), start=1):
             req = unhexlify(hexdata.replace(' ', '').replace('\n', ''))
-            self.sock.sendto(req, ('<broadcast>', 67))
+            address = '<broadcast>'
+            self.sock.sendto(req, (address, self.server_port))
             try:
+                fail = False
                 resp = self.sock.recv(1024)
-                # print('response:\n',
-                #       fill(hexlify(resp).decode(),
-                #            initial_indent='  ',
-                #            subsequent_indent='   '))
+                self.logger.debug('response:\n%s',
+                      fill(hexlify(resp).decode(),
+                           initial_indent='  ',
+                           subsequent_indent='  '))
             except timeout:
-                self.assertFalse(True, 'No response from response')
+                fail = True
+            if fail:
+                self.assertFalse(True,
+                                 'No response from server @ step %s' % step)
 
 def suite():
     suite_ = TestSuite()

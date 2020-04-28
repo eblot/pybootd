@@ -125,7 +125,7 @@ def hexline(data, sep=' '):
 
 
 def logger_factory(logtype='syslog', logfile=None, level='WARNING',
-                   logid='PXEd', format=None):
+                   logid='PXE', format=None):
     # this code has been copied from Trac (MIT modified license)
     logger = getLogger(logid)
     logtype = logtype.lower()
@@ -144,7 +144,7 @@ def logger_factory(logtype='syslog', logfile=None, level='WARNING',
         hdlr = BufferingHandler(0)
 
     if not format:
-        format = 'PXEd[%(module)s] %(levelname)s: %(message)s'
+        format = 'PXE[%(module)s] %(levelname)s: %(message)s'
         if logtype in ('file', 'stderr'):
             format = '%(asctime)s ' + format
     datefmt = ''
